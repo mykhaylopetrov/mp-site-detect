@@ -1,0 +1,16 @@
+# Забороняємо прямий HTTP-доступ до файлів кешу.
+# Файли призначені лише для PHP-процесу.
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+</IfModule>
+
+# Вимикаємо інтерпретацію PHP та виконання скриптів
+<FilesMatch ".*">
+    SetHandler None
+    SetHandler default
+    Options -ExecCGI -Indexes
+</FilesMatch>

@@ -1,0 +1,7 @@
+# Виключаємо вміст папки cache (згенеровані результати та службові дані)
+cache/*
+!cache/.htaccess
+!cache/index.php
+!cache/security/
+cache/security/*
+!cache/security/.htaccess
