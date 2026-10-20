@@ -183,6 +183,26 @@ final class Detector
                         unset($item);
                     }
                 }
+                // Якщо знайдено Joomla — вбудовуємо її деталі (версія, шаблон, розширення)
+                $isJoomla = false;
+                foreach ($cms as $cmsItem) {
+                    if ($cmsItem['name'] === 'Joomla') {
+                        $isJoomla = true;
+                        break;
+                    }
+                }
+                if ($isJoomla) {
+                    $joomlaDetails = $this->detectJoomlaDetails($html, $generator);
+                    if ($joomlaDetails !== null) {
+                        foreach ($cms as &$item) {
+                            if ($item['name'] === 'Joomla') {
+                                $item['joomla'] = $joomlaDetails;
+                                break;
+                            }
+                        }
+                        unset($item);
+                    }
+                }
                 $onSection('cms', $cms);
             }
 
@@ -3919,6 +3939,317 @@ final class Detector
             $info['version_source'] = 'asset-ver';
         }
         return $info;
+    }
+
+    /**
+     * Деталі Joomla: версія ядра, активний шаблон, сторонні розширення, адмінка.
+     * Зберігається в sections.cms[].joomla, рендериться всередині картки CMS.
+     */
+    private function detectJoomlaDetails(string $html, ?string $generator = null): ?array
+    {
+        $versionInfo = $this->detectJoomlaVersion($html, $generator);
+        $template = $this->detectJoomlaTemplate($html);
+        $extensions = $this->detectJoomlaExtensions($html);
+        $adminInfo = $this->detectJoomlaAdminUrl();
+
+        $hasAny = $versionInfo['version'] !== null
+            || $template !== null
+            || !empty($extensions)
+            || ($adminInfo !== null && (!empty($adminInfo['url']) || !empty($adminInfo['is_hidden'])));
+
+        if (!$hasAny) {
+            return null;
+        }
+
+        return [
+            'version' => $versionInfo['version'],
+            'version_source' => $versionInfo['source'],
+            'version_note' => $versionInfo['note'],
+            'template' => $template,
+            'extensions' => $extensions,
+            'admin_url' => $adminInfo,
+            'note' => 'Виявлено лише ті розширення, що лишили сліди на перевірених '
+                . 'сторінках (asset-шляхи, коментарі). Системні плагіни без слідів '
+                . 'дистанційно не видно.',
+        ];
+    }
+
+    /**
+     * Версія Joomla за пріоритетом:
+     *  1. meta generator (динамічний, найточніший);
+     *  2. /administrator/manifests/files/joomla.xml <version> (файл ядра);
+     *  3. /language/en-GB/en-GB.xml <version> (версія мовного пакета ядра).
+     */
+    private function detectJoomlaVersion(string $html, ?string $generator = null): array
+    {
+        $result = ['version' => null, 'source' => 'hidden', 'note' => null];
+
+        $gen = $generator ?? $this->extractMeta($html, 'generator');
+        if (is_string($gen) && $gen !== ''
+            && preg_match('~Joomla!?(?:\s*-\s*Open Source Content Management)?\s*-?\s*Version\s+([0-9][0-9.]*)~i', $gen, $m)) {
+            $result['version'] = $m[1];
+            $result['source'] = 'generator';
+            return $result;
+        }
+
+        $manifest = $this->httpGet($this->url . '/administrator/manifests/files/joomla.xml', 5);
+        if (is_string($manifest) && $manifest !== '' && stripos($manifest, '<html') === false
+            && preg_match('~<version>\s*([0-9][0-9.]*)\s*</version>~i', $manifest, $m)) {
+            $result['version'] = $m[1];
+            $result['source'] = 'manifest';
+            return $result;
+        }
+
+        $lang = $this->httpGet($this->url . '/language/en-GB/en-GB.xml', 5);
+        if (is_string($lang) && $lang !== '' && stripos($lang, '<html') === false
+            && preg_match('~<version>\s*([0-9][0-9.]*)\s*</version>~i', $lang, $m)) {
+            $result['version'] = $m[1];
+            $result['source'] = 'language';
+            $result['note'] = 'Версія мовного пакета ядра en-GB — зазвичай збігається з версією Joomla.';
+            return $result;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Активний шаблон Joomla: найчастіший slug у /templates/SLUG/ (+ templateDetails.xml).
+     * Службовий 'system' (сторінки помилок) ігнорується.
+     */
+    private function detectJoomlaTemplate(string $html): ?array
+    {
+        $candidates = [];
+        if (preg_match_all('~/templates/([^/"\'?#\s]+)/~i', $html, $matches)) {
+            foreach ($matches[1] as $slug) {
+                $slug = strtolower(trim($slug));
+                if ($slug === '' || $slug === 'system' || str_contains($slug, '..')) {
+                    continue;
+                }
+                $candidates[$slug] = ($candidates[$slug] ?? 0) + 1;
+            }
+        }
+        if (empty($candidates)) {
+            return null;
+        }
+        arsort($candidates);
+        $slug = (string)array_key_first($candidates);
+
+        $info = ['slug' => $slug];
+        $xml = $this->httpGet($this->url . '/templates/' . $slug . '/templateDetails.xml', 5);
+        if (is_string($xml) && $xml !== '' && stripos($xml, '<html') === false
+            && stripos($xml, '<extension') !== false) {
+            foreach (['name' => 'name', 'version' => 'version', 'author' => 'author', 'description' => 'description'] as $tag => $key) {
+                if (preg_match('~<' . $tag . '>\s*(.+?)\s*</' . $tag . '>~is', $xml, $m)) {
+                    $val = trim(strip_tags(html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5, 'UTF-8')));
+                    if ($val !== '') {
+                        $info[$key] = $key === 'description' ? $this->truncate($val, 280) : $val;
+                    }
+                }
+            }
+        }
+        if (empty($info['name'])) {
+            $info['name'] = ucwords(str_replace(['-', '_'], ' ', $slug));
+        }
+        return $info;
+    }
+
+    /**
+     * Сторонні розширення Joomla за слідами в HTML:
+     * - компоненти: option=com_X / /component/X / /components/com_X (крім ядра);
+     * - модулі: /modules/mod_X, /media/mod_X;
+     * - плагіни: /plugins/GROUP/NAME;
+     * - коментарі: JOOMLA_HTML_MARKERS (Modules Anywhere, Unite Gallery +версія…).
+     */
+    private function detectJoomlaExtensions(string $html): array
+    {
+        $found = []; // key => ['name'=>..., 'version'=>?string, 'source'=>...]
+
+        // Компоненти з URL/форм
+        $comSlugs = [];
+        if (preg_match_all('~option=(com_[a-z0-9_]+)~i', $html, $m)) {
+            foreach ($m[1] as $s) {
+                $comSlugs[strtolower($s)] = true;
+            }
+        }
+        if (preg_match_all('~/(?:component|components)/([a-zA-Z0-9_]+)/?~', $html, $m)) {
+            foreach ($m[1] as $s) {
+                $s = strtolower($s);
+                $comSlugs[str_starts_with($s, 'com_') ? $s : 'com_' . $s] = true;
+            }
+        }
+        $coreCom = ['com_content', 'com_users', 'com_user', 'com_menu', 'com_menus', 'com_login',
+            'com_config', 'com_ajax', 'com_admin', 'com_cache', 'com_checkin', 'com_finder',
+            'com_search', 'com_tags', 'com_contact', 'com_newsfeeds', 'com_weblinks',
+            'com_wrapper', 'com_mailto', 'com_media', 'com_modules', 'com_plugins',
+            'com_templates', 'com_languages', 'com_installer', 'com_joomlaupdate', 'com_postinstall'];
+        foreach (array_keys($comSlugs) as $slug) {
+            if (in_array($slug, $coreCom, true)) {
+                continue;
+            }
+            $found['com:' . $slug] = [
+                'name' => $this->prettifyJoomlaSlug($slug),
+                'version' => null,
+                'source' => 'component-url',
+            ];
+        }
+
+        // Модулі з asset-шляхів
+        if (preg_match_all('~/(?:modules|media)/(mod_[a-z0-9_]+)/~i', $html, $m)) {
+            foreach ($m[1] as $s) {
+                $slug = strtolower($s);
+                $found['mod:' . $slug] = [
+                    'name' => $this->prettifyJoomlaSlug($slug),
+                    'version' => null,
+                    'source' => 'asset-path',
+                ];
+            }
+        }
+
+        // Плагіни з asset-шляхів /plugins/GROUP/NAME/
+        if (preg_match_all('~/plugins/([a-z0-9_]+)/([a-z0-9_-]+)/~i', $html, $m, PREG_SET_ORDER)) {
+            foreach ($m as $hit) {
+                $key = 'plg:' . strtolower($hit[1]) . '/' . strtolower($hit[2]);
+                if (!isset($found[$key])) {
+                    $base = $this->prettifyJoomlaSlug($hit[2]);
+                    $group = strtolower($hit[1]);
+                    $found[$key] = [
+                        'name' => strtolower($base) === $group ? $base : $base . ' (' . $group . ')',
+                        'version' => null,
+                        'source' => 'asset-path',
+                    ];
+                }
+            }
+        }
+
+        // Маркери в коментарях/атрибутах (поверхня як у WP-плагінів).
+        $surfaceLower = strtolower($this->stripNoiseForDetection($this->extractPluginSurface($html)));
+        foreach (self::JOOMLA_HTML_MARKERS as $key => $cfg) {
+            if (isset($found[$key])) {
+                continue;
+            }
+            foreach ($cfg['markers'] as $marker) {
+                $pat = '~(?<![a-z0-9_-])' . preg_quote(strtolower($marker), '~') . '(?![a-z0-9_])~';
+                if (preg_match($pat, $surfaceLower)) {
+                    $ver = null;
+                    if (!empty($cfg['version_re']) && preg_match($cfg['version_re'] . 'i', $html, $vm)
+                        && preg_match('~^\d+\.\d+~', $vm[1])) {
+                        $ver = $vm[1];
+                    }
+                    $found[$key] = [
+                        'name' => $cfg['name'],
+                        'version' => $ver,
+                        'source' => 'marker',
+                    ];
+                    break;
+                }
+            }
+        }
+
+        $extensions = array_values($found);
+        // Дедуплікація за назвою: один і той самий компонент може світитися
+        // і в URL (option=com_x), і в asset-шляху — лишаємо сильніший доказ
+        // (з версією > asset-path > component-url > marker).
+        $rank = ['marker' => 0, 'component-url' => 1, 'asset-path' => 2];
+        $byName = [];
+        foreach ($extensions as $e) {
+            $k = mb_strtolower($e['name']);
+            $score = ($e['version'] !== null ? 10 : 0) + ($rank[$e['source']] ?? 0);
+            if (!isset($byName[$k]) || $score > $byName[$k]['score']) {
+                $byName[$k] = ['e' => $e, 'score' => $score];
+            }
+        }
+        $extensions = array_map(static fn($v) => $v['e'], array_values($byName));
+        usort($extensions, static fn($a, $b) => strcasecmp($a['name'], $b['name']));
+        return $extensions;
+    }
+
+    private function prettifyJoomlaSlug(string $slug): string
+    {
+        $slug = (string)preg_replace('~^(com|mod|plg)_~i', '', $slug);
+        return ucwords(str_replace(['-', '_'], ' ', $slug));
+    }
+
+    /**
+     * Маркери Joomla-розширень у коментарях/атрибутах (key має префікс com:/mod:/plg:/ext:).
+     */
+    private const JOOMLA_HTML_MARKERS = [
+        'ext:modules-anywhere' => [
+            'name' => 'Modules Anywhere (Regular Labs)',
+            'markers' => ['modules anywhere'],
+        ],
+        'ext:sourcerer' => [
+            'name' => 'Sourcerer (Regular Labs)',
+            'markers' => ['sourcerer'],
+        ],
+        'ext:advanced-module-manager' => [
+            'name' => 'Advanced Module Manager (Regular Labs)',
+            'markers' => ['advanced module manager'],
+        ],
+        'ext:unite-gallery' => [
+            'name' => 'Unite Gallery',
+            'markers' => ['unite gallery', 'unitegallery'],
+            'version_re' => '~unite gallery ([0-9][0-9a-zA-Z._-]*)~',
+        ],
+        'ext:unite-revolution' => [
+            'name' => 'Unite Revolution Slider',
+            'markers' => ['unite revolution', 'revslider'],
+            'version_re' => '~revolution slider ([0-9][0-9a-zA-Z._-]*)~',
+        ],
+        'ext:joomlatools' => [
+            'name' => 'Joomlatools',
+            'markers' => ['joomlatools'],
+        ],
+        'ext:akeeba' => [
+            'name' => 'Akeeba Backup',
+            'markers' => ['akeeba'],
+        ],
+        'ext:sh404sef' => [
+            'name' => 'sh404SEF',
+            'markers' => ['sh404sef'],
+        ],
+        'ext:jsn' => [
+            'name' => 'JSN Framework (JoomlaShine)',
+            'markers' => ['jsn-', 'jsn_'],
+        ],
+        'ext:gantry' => [
+            'name' => 'Gantry Framework',
+            'markers' => ['gantry'],
+        ],
+        'ext:t3' => [
+            'name' => 'T3 Framework',
+            'markers' => ['t3-framework', 't3 framework'],
+        ],
+    ];
+
+    /**
+     * Адмінка Joomla: стандартний /administrator/ з формою входу, або приховано.
+     */
+    private function detectJoomlaAdminUrl(): array
+    {
+        $base = rtrim($this->url, '/');
+        $body = $this->httpGet($base . '/administrator/', 6);
+        if (is_string($body) && $body !== '' && stripos($body, '<html') !== false) {
+            $low = strtolower($body);
+            $isLogin = (str_contains($low, 'com_login') && (str_contains($low, 'passwd') || str_contains($low, 'password')))
+                || (str_contains($low, 'id="form-login"') && str_contains($low, 'joomla'));
+            if ($isLogin) {
+                return [
+                    'url' => $base . '/administrator/',
+                    'path' => '/administrator/',
+                    'is_default' => true,
+                    'is_hidden' => false,
+                    'note' => 'Стандартна адреса панелі керування доступна.',
+                ];
+            }
+        }
+        return [
+            'url' => null,
+            'path' => null,
+            'is_default' => false,
+            'is_hidden' => true,
+            'note' => 'Стандартна адреса /administrator/ не відповідає сторінкою входу — '
+                . 'ймовірно, її перейменовано/закрито засобами безпеки.',
+        ];
     }
 
     private function parseWpThemeHeader(string $css): array
