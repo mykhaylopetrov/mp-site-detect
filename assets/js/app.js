@@ -504,8 +504,17 @@
 
         // 1. веб-сервер
         const name = (data.name && data.name !== 'невідомо') ? data.name : (data.raw || 'невідомо');
-        const serverLabel = data.version ? escapeHtml(name) + ' / ' + escapeHtml(data.version) : escapeHtml(name);
+        let serverLabel = data.version ? escapeHtml(name) + ' / ' + escapeHtml(data.version) : escapeHtml(name);
+        if (data.server_modules && typeof data.server_modules === 'object') {
+            const mods = Object.entries(data.server_modules).map(([k, v]) => escapeHtml(k) + (v ? '/' + escapeHtml(v) : '')).join(', ');
+            if (mods) serverLabel += ' <em>(' + mods + ')</em>';
+        }
         rows.push('<dt class="defs__term">Веб-сервер</dt><dd class="defs__def">' + serverLabel + '</dd>');
+
+        // 1b. протокол (реальний факт про стек: HTTP/1.1 vs HTTP/2)
+        if (data.http_version) {
+            rows.push('<dt class="defs__term">Протокол</dt><dd class="defs__def">' + escapeHtml(data.http_version) + '</dd>');
+        }
 
         // 2. Node.js
         if (data.node_present) {
@@ -518,6 +527,8 @@
         // 3. PHP
         if (data.php_version) {
             rows.push('<dt class="defs__term">PHP</dt><dd class="defs__def"><code>PHP/' + escapeHtml(data.php_version) + '</code> <em>(' + escapeHtml(data.php_version_source || 'X-Powered-By') + ')</em></dd>');
+        } else if (data.php_present) {
+            rows.push('<dt class="defs__term">PHP</dt><dd class="defs__def">присутній (версія прихована)' + (data.php_source ? ' <em>(' + escapeHtml(data.php_source) + ')</em>' : '') + '</dd>');
         } else if (data.powered_by && /php/i.test(data.powered_by)) {
             rows.push('<dt class="defs__term">PHP</dt><dd class="defs__def">присутній (версія прихована)</dd>');
         } else {
@@ -549,6 +560,14 @@
         }
 
         parts.push('<dl class="defs">' + rows.join('') + '</dl>');
+
+        // Докази проксі/бекенда, коли Server приховано або за CDN.
+        if (data.via) {
+            parts.push('<div class="server-note">Via: ' + escapeHtml(data.via) + '</div>');
+        }
+        if (data.x_server) {
+            parts.push('<div class="server-note">' + escapeHtml(data.x_server) + '</div>');
+        }
 
         if (data.note) {
             parts.push('<div class="server-note">' + escapeHtml(data.note) + '</div>');
@@ -597,8 +616,10 @@
             return;
         }
         if (name === 'server') {
-            // 6 рядків у секції, показуємо 6 як count
-            updateCard('server', { ...meta, count: 6, body: renderServer(data) });
+            // Кількість рядків динамічна (базові 6 + протокол/Via за наявності)
+            const body = renderServer(data);
+            const rowCount = (body.match(/defs__term/g) || []).length || 6;
+            updateCard('server', { ...meta, count: rowCount, body: body });
             return;
         }
         // location, hosting, whois — це key-value definitions
@@ -1043,6 +1064,13 @@
             writeWrapped('Веб-сервер', 13, 'bold', [109, 40, 217]);
             y += 4;
             writeWrapped(`Веб-сервер: ${(s.name || 'невідомо')}${s.version ? ' / ' + s.version : ''}`, 10, 'bold', [31, 17, 71]);
+            if (s.server_modules && typeof s.server_modules === 'object') {
+                const mods = Object.entries(s.server_modules).map(([k, v]) => k + (v ? '/' + v : '')).join(', ');
+                if (mods) writeWrapped(`Модулі: ${mods}`, 9, 'normal', [31, 17, 71]);
+            }
+            if (s.http_version) {
+                writeWrapped(`Протокол: ${s.http_version}`, 9, 'normal', [31, 17, 71]);
+            }
             if (s.node_present) {
                 writeWrapped(`Node.js: ${s.node_version ? 'v' + s.node_version + (s.node_source ? ' ('+s.node_source+')' : '') : 'присутній (версія прихована)'}`, 9, 'normal', [31, 17, 71]);
             } else {
@@ -1050,6 +1078,8 @@
             }
             if (s.php_version) {
                 writeWrapped(`PHP: PHP/${s.php_version}${s.php_version_source ? ' ('+s.php_version_source+')' : ''}`, 9, 'normal', [31, 17, 71]);
+            } else if (s.php_present) {
+                writeWrapped(`PHP: присутній (версія прихована)${s.php_source ? ' ('+s.php_source+')' : ''}`, 9, 'normal', [31, 17, 71]);
             } else {
                 writeWrapped('PHP: не виявлено', 9, 'normal', [139, 136, 163]);
             }
@@ -1065,6 +1095,8 @@
                 writeWrapped('База даних: не виявлено', 9, 'normal', [139, 136, 163]);
             }
             if (s.note) writeWrapped(s.note, 9, 'italic', [139, 136, 163]);
+            if (s.via) writeWrapped('Via: ' + s.via, 9, 'italic', [139, 136, 163]);
+            if (s.x_server) writeWrapped(s.x_server, 9, 'italic', [139, 136, 163]);
             if (s.db_note && s.db_note !== s.note) writeWrapped(s.db_note, 9, 'italic', [139, 136, 163]);
             y += 6;
         }

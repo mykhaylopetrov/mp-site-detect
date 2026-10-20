@@ -405,7 +405,7 @@ mp-site-detect/
 - Директорія `cache/` захищена від прямого HTTP-доступу через `.htaccess`.
 - **Версіонування схеми** (`schema_version`): при несумісних змінах структури
   даних константа `Cache::SCHEMA_VERSION` інкрементується — старі записи
-  автоматично вважаються невалідними і перезаписуються. Поточна версія: **23**
+  автоматично вважаються невалідними і перезаписуються. Поточна версія: **24**
   (прибрано окремі `sections.site`, `sections.technologies`, `sections.wordpress` — тепер `sections.cms[].wordpress`; `sections.cdn`/`sections.db` об'єднано в `sections.server`; додано Node.js/Python у `sections.server`).
 
 **Алгоритм:**
