@@ -2204,6 +2204,7 @@ final class Detector
 
         $versionInfo = $this->detectWordPressVersion($html, $generator, $theme, $parentTheme);
         $plugins = $this->detectWordPressPlugins($html);
+        $this->fillPluginVersionsFromPage($plugins, $html, $generator);
         $pageBuilders = $this->detectPageBuilder($html, $plugins);
         $wooCommerce = $this->detectWooCommerce($html, $plugins);
         $loginInfo = $this->detectWordPressLoginUrl($html);
@@ -2605,6 +2606,41 @@ final class Detector
         if (str_starts_with($location, '//')) return $this->scheme . ':' . $location;
         if (str_starts_with($location, '/')) return $origin . $location;
         return rtrim($origin, '/') . '/' . ltrim($location, '/');
+    }
+
+    /**
+     * Добирає версії плагінів із не-asset джерел на сторінці (лише для записів
+     * без версії — нічого не перезаписує):
+     * - Yoast SEO пише версію в коментар `<!-- ... Yoast SEO plugin vX.Y ... -->`;
+     * - All in One SEO пише версію в meta generator `All in One SEO (AIOSEO) X.Y`.
+     *
+     * @param array<int, array<string, mixed>> $plugins
+     */
+    private function fillPluginVersionsFromPage(array &$plugins, string $html, ?string $generator): void
+    {
+        $extra = [];
+        if (preg_match('~Yoast SEO plugin v([0-9][0-9A-Za-z._-]*)~i', $html, $m)
+            && preg_match('~^\d+\.\d+~', $m[1])) {
+            $extra['wordpress-seo'] = [$m[1], 'html-comment'];
+        }
+        if (is_string($generator) && $generator !== ''
+            && preg_match('~All in One SEO \(AIOSEO\) ([0-9][0-9A-Za-z._-]*)~i', $generator, $m)
+            && preg_match('~^\d+\.\d+~', $m[1])) {
+            $extra['all-in-one-seo-pack'] = [$m[1], 'meta-generator'];
+        }
+
+        if (empty($extra)) {
+            return;
+        }
+        foreach ($plugins as &$p) {
+            $slug = $p['slug'] ?? null;
+            if (is_string($slug) && isset($extra[$slug]) && empty($p['version'])) {
+                [$ver, $src] = $extra[$slug];
+                $p['version'] = $ver;
+                $p['version_source'] = $src;
+            }
+        }
+        unset($p);
     }
 
     /**
@@ -3363,7 +3399,70 @@ final class Detector
      */
     private function detectWordPressPlugins(string $html): array
     {
-        $slugs = []; // slug => ['count' => int, 'ver' => ?string]
+        $slugs = $this->extractPluginSlugs($html); // slug => ['count' => int, 'ver' => ?string]
+        $this->dropSharedAssetVersions($slugs);
+
+        // Сабпейдж-запит: плагіни на кшталт Kama SpamBlock підключаються лише
+        // там, де є форма коментарів (сторінка запису), а не на головній.
+        // Permalink свіжого запису через REST (1 запит) + сама сторінка
+        // (1 запит, короткий таймаут). Невдача — мовчки пропускаємо.
+        $subHtml = $this->fetchWordPressSubpageSample($html);
+        if (is_string($subHtml) && $subHtml !== '') {
+            foreach ($this->extractPluginSlugs($subHtml) as $slug => $meta) {
+                if (!isset($slugs[$slug])) {
+                    $slugs[$slug] = $meta;
+                } elseif ($slugs[$slug]['ver'] === null && $meta['ver'] !== null) {
+                    $slugs[$slug]['ver'] = $meta['ver']; // добрали версію з сабпейджа
+                }
+            }
+            $this->dropSharedAssetVersions($slugs);
+            $this->matchPluginMarkers(
+                strtolower($this->stripNoiseForDetection($this->extractPluginSurface($subHtml))),
+                $slugs
+            );
+        }
+
+        $plugins = [];
+        $resolvedSlugs = [];
+        foreach ($slugs as $slug => $meta) {
+            $entry = $this->resolveWpPlugin($slug, $meta['ver']);
+            $entry['source'] = !empty($meta['marker']) ? 'marker' : ($meta['ver'] !== null ? 'asset' : 'asset-path');
+            $plugins[] = $entry;
+            $resolvedSlugs[$slug] = true;
+        }
+
+        // Маркери без asset-шляху: плагіни, що не підключають CSS/JS на
+        // просканованих сторінках, але лишають коментарі/атрибути
+        // (напр. Rank Math додає лише <!-- ... Rank Math ... -->).
+        // Словник — у WP_PLUGIN_HTML_MARKERS.
+        $surfaceLower = strtolower($this->stripNoiseForDetection($this->extractPluginSurface($html)));
+        $this->matchPluginMarkers($surfaceLower, $slugs);
+        foreach ($slugs as $slug => $meta) {
+            if (isset($resolvedSlugs[$slug])) {
+                continue;
+            }
+            // matchPluginMarkers додав нові slug'и — резолвимо їх як marker
+            $entry = $this->resolveWpPlugin($slug, $meta['ver']);
+            $entry['source'] = 'marker';
+            $plugins[] = $entry;
+        }
+
+        // Сортуємо за назвою
+        usort($plugins, function ($a, $b) {
+            return strcasecmp($a['name'], $b['name']);
+        });
+
+        return $plugins;
+    }
+
+    /**
+     * Збирає slug'и плагінів з asset-URL у HTML (шляхи + ?ver=).
+     *
+     * @return array<string, array{count: int, ver: ?string}>
+     */
+    private function extractPluginSlugs(string $html): array
+    {
+        $slugs = [];
 
         // a) Asset-URL з ?ver= — одразу фіксуємо кандидата на версію.
         if (preg_match_all(
@@ -3374,8 +3473,7 @@ final class Detector
         )) {
             foreach ($m as $hit) {
                 $slug = strtolower(trim($hit[1]));
-                if ($slug === '' || str_contains($slug, '..') || str_contains($slug, '?')
-                    || !preg_match('~^[a-z0-9][a-z0-9_-]*$~', $slug)) {
+                if (!$this->isValidPluginSlug($slug)) {
                     continue;
                 }
                 if (!isset($slugs[$slug])) {
@@ -3393,8 +3491,7 @@ final class Detector
         if (preg_match_all('~/wp-content/plugins/([^/"\'?#\s]+)/~i', $html, $matches)) {
             foreach ($matches[1] as $slug) {
                 $slug = strtolower(trim($slug));
-                if ($slug === '' || str_contains($slug, '..') || str_contains($slug, '?')
-                    || !preg_match('~^[a-z0-9][a-z0-9_-]*$~', $slug)) {
+                if (!$this->isValidPluginSlug($slug)) {
                     continue;
                 }
                 if (!isset($slugs[$slug])) {
@@ -3405,13 +3502,64 @@ final class Detector
         }
 
         // Фільтруємо службові/системні шляхи, які не є реальними плагінами.
-        $ignore = ['mu-plugins', 'languages', 'wp-content', 'plugin-dir'];
-        foreach ($ignore as $bad) {
+        foreach (['mu-plugins', 'languages', 'wp-content', 'plugin-dir'] as $bad) {
             unset($slugs[$bad]);
         }
 
-        // Відсікаємо ?ver=, що однаковий у ≥4 плагінів — це версія ядра WP за замовчуванням,
-        // а не версія самих плагінів (wp_enqueue без $ver підставляє get_bloginfo('version')).
+        // c) Власні директорії плагінів у uploads (Popup Maker тримає згенеровані
+        // стилі у /wp-content/uploads/pum/, asset'ів у /plugins/ може не бути).
+        foreach (self::WP_PLUGIN_UPLOADS_DIRS as $dir => $mappedSlug) {
+            if (preg_match_all(
+                '~/wp-content/uploads/' . preg_quote($dir, '~') . '/[^"\'\s<>]*?[?&]ver=([A-Za-z0-9][A-Za-z0-9._-]*)~i',
+                $html,
+                $m
+            )) {
+                foreach ($m[1] as $verRaw) {
+                    $ver = trim($verRaw, " \t\n\r\0\x0B\"'");
+                    if (!isset($slugs[$mappedSlug])) {
+                        $slugs[$mappedSlug] = ['count' => 0, 'ver' => null];
+                    }
+                    $slugs[$mappedSlug]['count']++;
+                    if ($slugs[$mappedSlug]['ver'] === null && $this->isPlausibleAssetVersion($ver)) {
+                        $slugs[$mappedSlug]['ver'] = $ver;
+                    }
+                }
+            } elseif (stripos($html, '/wp-content/uploads/' . $dir . '/') !== false) {
+                if (!isset($slugs[$mappedSlug])) {
+                    $slugs[$mappedSlug] = ['count' => 1, 'ver' => null];
+                } else {
+                    $slugs[$mappedSlug]['count']++;
+                }
+            }
+        }
+
+        return $slugs;
+    }
+
+    /**
+     * Мапа «директорія в uploads → slug плагіна» для плагінів, що генерують
+     * свої файли поза /plugins/ (і тому невидимі для asset-скану).
+     */
+    private const WP_PLUGIN_UPLOADS_DIRS = [
+        'pum' => 'popup-maker',
+    ];
+
+    private function isValidPluginSlug(string $slug): bool
+    {
+        return $slug !== ''
+            && !str_contains($slug, '..')
+            && !str_contains($slug, '?')
+            && (bool)preg_match('~^[a-z0-9][a-z0-9_-]*$~', $slug);
+    }
+
+    /**
+     * Відсікає ?ver=, що однакова у ≥4 плагінів — це версія ядра WP
+     * за замовчуванням (wp_enqueue без $ver підставляє get_bloginfo('version')).
+     *
+     * @param array<string, array{count: int, ver: ?string}> $slugs
+     */
+    private function dropSharedAssetVersions(array &$slugs): void
+    {
         $verFreq = [];
         foreach ($slugs as $meta) {
             if ($meta['ver'] !== null) {
@@ -3427,19 +3575,156 @@ final class Detector
                 }
             }
         }
+    }
 
-        $plugins = [];
-        foreach ($slugs as $slug => $meta) {
-            $plugins[] = $this->resolveWpPlugin($slug, $meta['ver']);
+    /**
+     * Шукає маркери WP_PLUGIN_HTML_MARKERS у підготовленій поверхні
+     * (lowercase, без шуму) і додає знайдені slug'и у $slugs.
+     *
+     * @param array<string, array{count: int, ver: ?string}> $slugs
+     */
+    private function matchPluginMarkers(string $surfaceLower, array &$slugs): void
+    {
+        foreach (self::WP_PLUGIN_HTML_MARKERS as $slug => $markers) {
+            if (isset($slugs[$slug])) {
+                continue; // уже знайдено за asset-шляхом
+            }
+            foreach ($markers as $marker) {
+                // Межі як у Wappalyzer: маркер не має бути частиною довшого
+                // slug'а (напр. клас `tag-wordpress-elementor` від мітки блогу —
+                // це НЕ ознака плагіна Elementor; а `elementor-widget` — ознака).
+                $pat = '~(?<![a-z0-9_-])' . preg_quote(strtolower($marker), '~') . '(?![a-z0-9_])~';
+                if (preg_match($pat, $surfaceLower)) {
+                    $slugs[$slug] = ['count' => 1, 'ver' => null, 'marker' => true];
+                    break;
+                }
+            }
+        }
+    }
+
+    /**
+     * Повертає HTML одного сабпейджа (сторінки запису) для збагачення списку
+     * плагінів, або null. Використовує REST для permalink'а свіжого запису.
+     */
+    private function fetchWordPressSubpageSample(string $html): ?string
+    {
+        // Немає сенсу, якщо головна вже має форму коментарів — там усе видно.
+        if (preg_match('~comment-form|id="respond"|class="[^"]*comment-respond~i', $html)) {
+            return null;
         }
 
-        // Сортуємо за назвою
-        usort($plugins, function ($a, $b) {
-            return strcasecmp($a['name'], $b['name']);
-        });
+        $postUrl = null;
+        $rest = $this->httpGet($this->url . '/wp-json/wp/v2/posts?per_page=1&_fields=link', 5);
+        if (is_string($rest) && $rest !== '') {
+            $data = json_decode($rest, true);
+            if (is_array($data) && isset($data[0]['link']) && is_string($data[0]['link'])
+                && preg_match('~^https?://~i', $data[0]['link'])) {
+                $postUrl = $data[0]['link'];
+            }
+        }
+        if ($postUrl === null) {
+            // Fallback: перше внутрішнє посилання, схоже на запис/сторінку
+            // (не пагінація, не тег/рубрика, не статичний файл).
+            $ownHost = strtolower(parse_url($this->url, PHP_URL_HOST) ?? '');
+            if (preg_match_all('~href\s*=\s*["\']([^"\']+)["\']~i', $html, $m)) {
+                foreach ($m[1] as $href) {
+                    $href = html_entity_decode(trim($href), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                    if (!preg_match('~^https?://~i', $href)) {
+                        continue;
+                    }
+                    $parts = parse_url($href);
+                    if (strtolower($parts['host'] ?? '') !== $ownHost) {
+                        continue;
+                    }
+                    $path = strtolower($parts['path'] ?? '/');
+                    if ($path === '/' || str_contains($path, '/page/')
+                        || str_contains($path, '/tag/') || str_contains($path, '/category/')
+                        || str_contains($path, '/author/')
+                        || preg_match('~\.(css|js|jpg|jpeg|png|gif|webp|svg|pdf|zip|mp4)(?:[?#]|$)~', $path)) {
+                        continue;
+                    }
+                    $postUrl = $href;
+                    break;
+                }
+            }
+        }
+        if ($postUrl === null) {
+            return null;
+        }
 
-        return $plugins;
+        $body = $this->httpGet($postUrl, 8);
+        if (!is_string($body) || $body === '' || stripos($body, '<html') === false) {
+            return null;
+        }
+        return $body;
     }
+
+    /**
+     * Повертає «поверхню» для пошуку маркерів плагінів: HTML-коментарі +
+     * атрибути тегів (src/href/class/id/...), БЕЗ текстового вмісту сторінки
+     * та БЕЗ meta-описів (крім generator — туди пишуть AIOSEO-подібні).
+     * Текст статей/тегів на кшталт «Contact Form 7» чи «Elementor» не має
+     * вважатися ознакою встановленого плагіна.
+     */
+    private function extractPluginSurface(string $html): string
+    {
+        $parts = [];
+        if (preg_match_all('~<!--(.*?)-->~s', $html, $m)) {
+            $parts[] = implode("\n", $m[1]);
+        }
+        if (preg_match_all('~<([a-zA-Z][a-zA-Z0-9-]*)\b([^<>]*)>~', $html, $m, PREG_SET_ORDER)) {
+            foreach ($m as $tag) {
+                $tname = strtolower($tag[1]);
+                $attrs = $tag[2];
+                if ($tname === 'meta' && stripos($attrs, 'generator') === false) {
+                    continue;
+                }
+                if ($tname === 'title' || $tname === 'a') {
+                    // <a href="/tag/wordpress-elementor/"> — контентна навігація
+                    // (теги/рубрики), а не слід плагіна. Активи плагінів живуть
+                    // у script/link/img/form/input/div, а не в посиланнях.
+                    continue;
+                }
+                $parts[] = $attrs;
+            }
+        }
+        return implode("\n", $parts);
+    }
+
+    /**
+     * Не-asset сліди популярних плагінів: HTML-коментарі, meta-generator,
+     * класи у розмітці. Усі маркери — distinctive рядки, що їх генерує сам плагін
+     * (як у Wappalyzer: dom/html/js-патерни), а не загальні слова.
+     * slug => [маркери]. Усі slug'и мають бути у WP_PLUGIN_NAMES (без HTTP-запитів).
+     */
+    private const WP_PLUGIN_HTML_MARKERS = [
+        'seo-by-rank-math' => ['rank math', 'rankmath'],
+        'wordpress-seo' => ['yoast seo', '_yoast_wpseo_', 'yoast.com/wordpress/plugins/seo'],
+        'all-in-one-seo-pack' => ['all in one seo', 'aioseo'],
+        'seopress' => ['seopress'],
+        'litespeed-cache' => ['litespeed cache'],
+        'w3-total-cache' => ['w3 total cache'],
+        'wp-rocket' => ['wp rocket'],
+        'wp-super-cache' => ['wp-super-cache', 'wp super cache'],
+        'autoptimize' => ['autoptimize'],
+        'contact-form-7' => ['contact form 7', 'wpcf7'],
+        'kama-spamblock' => ['kama_spamblock', 'kama spamblock'],
+        'wordfence' => ['wordfence'],
+        'ithemes-security' => ['ithemes security'],
+        'sucuri-scanner' => ['sucuri security'],
+        'really-simple-ssl' => ['really simple ssl'],
+        'cookie-law-info' => ['cookie law info'],
+        'complianz' => ['complianz'],
+        'polylang' => ['polylang'],
+        'sitepress-multilingual-cms' => ['sitepress', 'wpml-'],
+        'jetpack' => ['jetpack'],
+        'woocommerce' => ['woocommerce'],
+        'elementor' => ['elementor'],
+        'classic-editor' => ['classic editor'],
+        'wpforms-lite' => ['wpforms'],
+        'tablepress' => ['tablepress'],
+        'nextgen-gallery' => ['nextgen gallery'],
+    ];
 
     /**
      * Чи схоже значення ?ver= на версію плагіна (а не на timestamp/cache-buster).
@@ -3459,6 +3744,23 @@ final class Detector
         return (bool)preg_match('~^\d+\.\d+~', $ver);
     }
 
+    /**
+     * Читає readme.txt плагіна і повертає Stable tag (встановлену версію),
+     * або null (файл закрито / тега немає / тег не схожий на версію).
+     */
+    private function fetchPluginStableTag(string $slug): ?string
+    {
+        $readme = $this->httpGet($this->url . '/wp-content/plugins/' . $slug . '/readme.txt', 4);
+        if (!is_string($readme) || $readme === '' || stripos($readme, '<html') !== false) {
+            return null;
+        }
+        if (preg_match('~^[ \t*]*Stable tag:\s*([0-9][0-9A-Za-z._-]*)\s*$~im', $readme, $v)
+            && preg_match('~^\d+\.\d+~', trim($v[1]))) {
+            return trim($v[1]);
+        }
+        return null;
+    }
+
     private function resolveWpPlugin(string $slug, ?string $assetVer = null): array
     {
         $info = ['slug' => $slug];
@@ -3472,6 +3774,15 @@ final class Detector
             if ($assetVer !== null) {
                 $info['version'] = $assetVer;
                 $info['version_source'] = 'asset-ver';
+            } else {
+                // Словник знає ім'я, але версії з asset'ів немає (Polylang, Rank Math
+                // тощо часто нічого не підключають). Пробуємо readme.txt: Stable tag
+                // у файлі поставленого плагіна = його встановлена версія.
+                $stable = $this->fetchPluginStableTag($slug);
+                if ($stable !== null) {
+                    $info['version'] = $stable;
+                    $info['version_source'] = 'readme';
+                }
             }
             return $info;
         }
@@ -3576,6 +3887,7 @@ final class Detector
         'akismet-anti-spam' => ['name' => 'Akismet Anti-Spam', 'site' => 'https://akismet.com'],
         'contact-form-7' => ['name' => 'Contact Form 7', 'site' => 'https://contactform7.com'],
         'contact-form-7-honeypot' => ['name' => 'Contact Form 7 Honeypot', 'site' => 'https://wordpress.org/plugins/contact-form-7-honeypot'],
+        'kama-spamblock' => ['name' => 'Kama SpamBlock', 'site' => 'https://wordpress.org/plugins/kama-spamblock'],
         'flamingo' => ['name' => 'Flamingo', 'site' => 'https://contactform7.com/flamingo'],
         'woocommerce' => ['name' => 'WooCommerce', 'site' => 'https://woocommerce.com'],
         'woocommerce-payments' => ['name' => 'WooCommerce Payments', 'site' => 'https://woocommerce.com/payments'],
@@ -3588,6 +3900,7 @@ final class Detector
         'exactmetrics' => ['name' => 'ExactMetrics', 'site' => 'https://exactmetrics.com'],
         'google-analytics-dashboard-for-wp' => ['name' => 'ExactMetrics', 'site' => 'https://exactmetrics.com'],
         'seo-by-rank-math' => ['name' => 'Rank Math SEO', 'site' => 'https://rankmath.com'],
+        'seopress' => ['name' => 'SEOPress', 'site' => 'https://www.seopress.org'],
         'all-in-one-seo-pack' => ['name' => 'All in One SEO Pack', 'site' => 'https://semperplugins.com'],
         'all-in-one-wp-migration' => ['name' => 'All-in-One WP Migration', 'site' => 'https://servmask.com'],
         'wordfence' => ['name' => 'Wordfence Security', 'site' => 'https://www.wordfence.com'],
