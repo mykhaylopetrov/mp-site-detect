@@ -443,6 +443,86 @@
         return parts.join('');
     };
 
+    const renderJoomla = (j) => {
+        if (!j) return '';
+        const parts = [];
+
+        // Версія ядра
+        if (j.version) {
+            const sourceLabels = {
+                generator: 'мета-тег generator',
+                manifest: 'файл <em>/administrator/manifests/files/joomla.xml</em>',
+                language: 'файл <em>/language/en-GB/en-GB.xml</em>',
+            };
+            const sourceHtml = sourceLabels[j.version_source]
+                ? ` <span class="wp-version__source">(${sourceLabels[j.version_source]})</span>`
+                : '';
+            parts.push(`<div class="wp-version">
+                <span class="wp-version__label">Версія Joomla:</span>
+                <span class="wp-version__value">${escapeHtml(j.version)}</span>${sourceHtml}
+                ${j.version_note ? `<div class="wp-version__note">${escapeHtml(j.version_note)}</div>` : ''}
+            </div>`);
+        } else if (j.template || (Array.isArray(j.extensions) && j.extensions.length)) {
+            parts.push(`<div class="wp-version wp-version--hidden">
+                <span class="wp-version__label">Версія Joomla:</span>
+                <span class="wp-version__value">прихована</span>
+            </div>`);
+        }
+
+        // Активний шаблон
+        if (j.template) {
+            const t = j.template;
+            parts.push(`<div class="wp-theme">
+                <div class="wp-theme__heading">
+                    <span class="wp-theme__label">Активний шаблон</span>
+                    <span class="wp-theme__name">${escapeHtml(t.name || t.slug || '—')}${
+                        t.version ? ' <span class="wp-theme__version">v' + escapeHtml(t.version) + '</span>' : ''
+                    }</span>
+                </div>
+                ${t.author ? '<div class="wp-theme__author">Автор: ' + escapeHtml(t.author) + '</div>' : ''}
+                ${t.description ? '<p class="wp-theme__desc">' + escapeHtml(t.description) + '</p>' : ''}
+                <div class="wp-theme__slug">Slug: <code>${escapeHtml(t.slug || '')}</code></div>
+            </div>`);
+        }
+
+        // Розширення (компоненти, модулі, плагіни)
+        if (Array.isArray(j.extensions) && j.extensions.length > 0) {
+            const extList = j.extensions.map((e) => `
+                <div class="wp-plugin">
+                    <span class="wp-plugin__name">${escapeHtml(e.name)}${
+                        e.version ? ' <span class="wp-plugin__version">v' + escapeHtml(e.version) + '</span>' : ''
+                    }</span>
+                </div>
+            `).join('');
+            parts.push(`<div class="wp-plugins"><h4 class="wp-plugins__title">Виявлені розширення (${j.extensions.length}):</h4><div class="wp-plugins__list">${extList}</div></div>`);
+        }
+
+        if (j.note) {
+            parts.push('<p class="wp-note">' + escapeHtml(j.note) + '</p>');
+        }
+
+        // Адмінка
+        if (j.admin_url) {
+            const ad = j.admin_url;
+            if (ad.is_hidden) {
+                parts.push(`<div class="wp-login wp-login--hidden">
+                    <span class="wp-login__label">Адмін-панель</span>
+                    <span class="wp-login__badge wp-login__badge--hidden">приховано</span>
+                    <div class="wp-login__note">${escapeHtml(ad.note || '')}</div>
+                </div>`);
+            } else if (ad.url) {
+                parts.push(`<div class="wp-login">
+                    <span class="wp-login__label">Адмін-панель</span>
+                    <a class="wp-login__url" href="${escapeHtml(ad.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(ad.url)}</a>
+                    <span class="wp-login__badge">стандартна</span>
+                    ${ad.note ? `<div class="wp-login__note">${escapeHtml(ad.note)}</div>` : ''}
+                </div>`);
+            }
+        }
+
+        return parts.join('');
+    };
+
     const renderSiteInfo = (site) => {
         const data = {};
         if (site.title) data['Заголовок'] = site.title;
@@ -588,6 +668,10 @@
             if (item.wordpress) {
                 wpHtml = '<div class="wp-inline">' + renderWordPress(item.wordpress) + '</div>';
             }
+            let joomlaHtml = '';
+            if (item.joomla) {
+                joomlaHtml = '<div class="wp-inline">' + renderJoomla(item.joomla) + '</div>';
+            }
             return `
                 <div class="tech-item">
                     <div class="tech-item__head">
@@ -597,6 +681,7 @@
                     ${item.description ? `<p class="tech-item__desc">${escapeHtml(item.description)}</p>` : ''}
                     ${item.site ? `<a class="tech-item__link" href="${escapeHtml(item.site)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.site)} →</a>` : ''}
                     ${wpHtml}
+                    ${joomlaHtml}
                 </div>
             `;
         }).join('')}</div>`;
@@ -1046,6 +1131,18 @@
                     if (wp.login_url) {
                         if (wp.login_url.is_hidden) writeWrapped('Адмін-панель: приховано — ' + (wp.login_url.note || ''), 9, 'normal', [139, 136, 163]);
                         else if (wp.login_url.url) writeWrapped(`Адмін-панель: ${wp.login_url.url}${wp.login_url.is_custom ? ' (кастомна)' : ' (стандартна)'}`, 9, 'normal', [91, 87, 120]);
+                    }
+                }
+                if (item.joomla) {
+                    const j = item.joomla;
+                    if (j.version) writeWrapped(`Версія Joomla: ${j.version}`, 9, 'normal', [31, 17, 71]);
+                    if (j.template) writeWrapped(`Шаблон: ${j.template.name || j.template.slug || '—'}${j.template.version ? ' v' + j.template.version : ''}`, 9, 'normal', [91, 87, 120]);
+                    if (Array.isArray(j.extensions) && j.extensions.length) {
+                        writeWrapped(`Розширення (${j.extensions.length}): ${j.extensions.map(e=>e.name + (e.version ? ' v'+e.version : '')).join(', ')}`, 9, 'normal', [91, 87, 120]);
+                    }
+                    if (j.admin_url) {
+                        if (j.admin_url.is_hidden) writeWrapped('Адмін-панель: приховано', 9, 'normal', [139, 136, 163]);
+                        else if (j.admin_url.url) writeWrapped(`Адмін-панель: ${j.admin_url.url} (стандартна)`, 9, 'normal', [91, 87, 120]);
                     }
                 }
                 y += 4;

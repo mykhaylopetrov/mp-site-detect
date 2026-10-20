@@ -37,6 +37,23 @@ WHOIS-дані домену, використану CMS (з деталями Wor
 
 Результати можуть бути завантажені у PDF одним натиском.
 
+## Можливості Joomla-детектора (всередині CMS)
+
+Коли на сайті знайдено CMS Joomla, безпосередньо в картці **Система керування (CMS)**
+під блоком Joomla виводяться (`sections.cms[].joomla`):
+
+- **Версія ядра** — за пріоритетом: мета-тег `generator`
+  (`Joomla! … Version X.Y.Z`) → `/administrator/manifests/files/joomla.xml`
+  (`<version>`) → `/language/en-GB/en-GB.xml` (`<version>` мовного пакета ядра).
+- **Активний шаблон** — найчастіший slug у `/templates/SLUG/` (+ `templateDetails.xml`:
+  ім'я, версія, автор; службовий `system` ігнорується).
+- **Розширення** — сторонні компоненти (`option=com_X`, крім ядра), модулі
+  (`/modules/mod_X`, `/media/mod_X`), плагіни (`/plugins/GROUP/NAME`) та маркери
+  в коментарях (Modules Anywhere, Sourcerer, Unite Gallery з версією, Joomlatools,
+  Akeeba, Gantry, T3…).
+- **Адмінка** — проба `/administrator/`: стандартна адреса з формою входу
+  (`com_login` + `passwd`) або помітка «приховано».
+
 ## Можливості WordPress-детектора (всередині CMS)
 
 Коли на сайті знайдено CMS WordPress, безпосередньо в картці **Система керування (CMS)** під блоком WordPress виводяться:
@@ -405,7 +422,7 @@ mp-site-detect/
 - Директорія `cache/` захищена від прямого HTTP-доступу через `.htaccess`.
 - **Версіонування схеми** (`schema_version`): при несумісних змінах структури
   даних константа `Cache::SCHEMA_VERSION` інкрементується — старі записи
-  автоматично вважаються невалідними і перезаписуються. Поточна версія: **24**
+  автоматично вважаються невалідними і перезаписуються. Поточна версія: **25**
   (прибрано окремі `sections.site`, `sections.technologies`, `sections.wordpress` — тепер `sections.cms[].wordpress`; `sections.cdn`/`sections.db` об'єднано в `sections.server`; додано Node.js/Python у `sections.server`).
 
 **Алгоритм:**

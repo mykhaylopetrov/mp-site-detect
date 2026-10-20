@@ -86,8 +86,11 @@ final class Cache
      *       мапа uploads-директорій (pum → popup-maker).
      * - 24: серверна секція — HTTP-протокол (h1/h2/h3), вторинні токени Server
      *       (OpenSSL/…), PHP-інференс (PHPSESSID/CMS), показ Via/X-Server.
+     * - 25: деталі Joomla в картці CMS (sections.cms[].joomla) — версія ядра
+     *       (generator/manifest/language-xml), шаблон (templateDetails.xml),
+     *       розширення (компоненти/модулі/плагіни/маркери коментарів), адмінка.
      */
-    public const SCHEMA_VERSION = 24;
+    public const SCHEMA_VERSION = 25;
 
     private string $dir;
     private int $ttl;
