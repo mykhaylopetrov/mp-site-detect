@@ -89,8 +89,11 @@ final class Cache
      * - 25: деталі Joomla в картці CMS (sections.cms[].joomla) — версія ядра
      *       (generator/manifest/language-xml), шаблон (templateDetails.xml),
      *       розширення (компоненти/модулі/плагіни/маркери коментарів), адмінка.
+     * - 26: деталі Drupal в картці CMS (sections.cms[].drupal) — версія
+     *       (CHANGELOG/generator/X-Generator), тема (.info.yml), модулі за
+     *       asset-шляхами (ядро відфільтровано), вхід /user/login.
      */
-    public const SCHEMA_VERSION = 25;
+    public const SCHEMA_VERSION = 26;
 
     private string $dir;
     private int $ttl;
