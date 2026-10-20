@@ -203,6 +203,26 @@ final class Detector
                         unset($item);
                     }
                 }
+                // Якщо знайдено Drupal — вбудовуємо його деталі (версія, тема, модулі)
+                $isDrupal = false;
+                foreach ($cms as $cmsItem) {
+                    if ($cmsItem['name'] === 'Drupal') {
+                        $isDrupal = true;
+                        break;
+                    }
+                }
+                if ($isDrupal) {
+                    $drupalDetails = $this->detectDrupalDetails($html, $generator, $this->httpHeaders);
+                    if ($drupalDetails !== null) {
+                        foreach ($cms as &$item) {
+                            if ($item['name'] === 'Drupal') {
+                                $item['drupal'] = $drupalDetails;
+                                break;
+                            }
+                        }
+                        unset($item);
+                    }
+                }
                 $onSection('cms', $cms);
             }
 
@@ -4249,6 +4269,198 @@ final class Detector
             'is_hidden' => true,
             'note' => 'Стандартна адреса /administrator/ не відповідає сторінкою входу — '
                 . 'ймовірно, її перейменовано/закрито засобами безпеки.',
+        ];
+    }
+
+    /**
+     * Деталі Drupal: версія ядра, активна тема, сторонні модулі, вхід.
+     * Зберігається в sections.cms[].drupal, рендериться всередині картки CMS.
+     */
+    private function detectDrupalDetails(string $html, ?string $generator, array $headers): ?array
+    {
+        $versionInfo = $this->detectDrupalVersion($html, $generator, $headers);
+        $theme = $this->detectDrupalTheme($html);
+        $modules = $this->detectDrupalModules($html);
+        $loginInfo = $this->detectDrupalLoginUrl();
+
+        $hasAny = $versionInfo['version'] !== null
+            || $theme !== null
+            || !empty($modules)
+            || ($loginInfo !== null && (!empty($loginInfo['url']) || !empty($loginInfo['is_hidden'])));
+
+        if (!$hasAny) {
+            return null;
+        }
+
+        return [
+            'version' => $versionInfo['version'],
+            'version_source' => $versionInfo['source'],
+            'version_note' => $versionInfo['note'],
+            'theme' => $theme,
+            'modules' => $modules,
+            'login_url' => $loginInfo,
+            'note' => 'Виявлено лише ті модулі, що лишили сліди на перевіреній сторінці '
+                . '(asset-шляхи). Версії тем/модулів дистанційно не видно — .info.yml '
+                . 'зазвичай закриті; показано імена.',
+        ];
+    }
+
+    /**
+     * Версія Drupal за пріоритетом:
+     *  1. /core/CHANGELOG.txt — перший рядок з "Drupal X.Y.Z" (точна, якщо файл відкрито);
+     *  2. meta Generator / X-Generator ("Drupal 10" — лише мажорна гілка).
+     */
+    private function detectDrupalVersion(string $html, ?string $generator, array $headers): array
+    {
+        $result = ['version' => null, 'source' => 'hidden', 'note' => null];
+
+        $changelog = $this->httpGet($this->url . '/core/CHANGELOG.txt', 5);
+        if (is_string($changelog) && $changelog !== '' && stripos($changelog, '<html') === false
+            && preg_match('~^\s*Drupal\s+([0-9]+\.[0-9]+(?:\.[0-9]+)?)\b~im', mb_substr($changelog, 0, 2000), $m)) {
+            $result['version'] = $m[1];
+            $result['source'] = 'changelog';
+            return $result;
+        }
+
+        $gen = $generator ?? $this->extractMeta($html, 'generator');
+        if (is_string($gen) && $gen !== '' && preg_match('~Drupal\s+([0-9]+(?:\.[0-9]+){0,2})~i', $gen, $m)) {
+            $result['version'] = $m[1];
+            $result['source'] = 'meta-generator';
+            if (substr_count($m[1], '.') < 2) {
+                $result['note'] = 'Відома лише мажорна гілка — точну версію сайт приховує.';
+            }
+            return $result;
+        }
+        foreach ($headers as $h) {
+            if (stripos($h, 'X-Generator:') === 0
+                && preg_match('~Drupal\s+([0-9]+(?:\.[0-9]+){0,2})~i', trim(substr($h, 12)), $m)) {
+                $result['version'] = $m[1];
+                $result['source'] = 'header-x-generator';
+                if (substr_count($m[1], '.') < 2) {
+                    $result['note'] = 'Відома лише мажорна гілка — точну версію сайт приховує.';
+                }
+                return $result;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Активна тема Drupal: найчастіший slug у /sites/…/themes/SLUG/ та /themes/…/SLUG/.
+     * Пробує прочитати .info.yml за спостереженим базовим шляхом (часто 403 — тоді без деталей).
+     *
+     * @return array{slug: string, name?: string, version?: string, description?: string, base?: string}|null
+     */
+    private function detectDrupalTheme(string $html): ?array
+    {
+        $candidates = []; // slug => ['count'=>int, 'base'=>string]
+        // Лівий контекст ["'(\s= — відсікає RDF-неймспейси на кшталт
+        // purl.org/rss/1.0/modules/content/ у <html prefix="...">.
+        if (preg_match_all('~(?<=["\'\(\\s=])(/sites/(?:default|all)/themes/|/themes/(?:custom/|contrib/)?|/core/themes/)([a-z0-9_-]+)/~i', $html, $m, PREG_SET_ORDER)) {
+            foreach ($m as $hit) {
+                $slug = strtolower($hit[2]);
+                if ($slug === '' || $slug === 'custom' || $slug === 'contrib' || str_contains($slug, '..')) {
+                    continue;
+                }
+                if (!isset($candidates[$slug])) {
+                    $candidates[$slug] = ['count' => 0, 'base' => $hit[1] . $hit[2] . '/'];
+                }
+                $candidates[$slug]['count']++;
+            }
+        }
+        if (empty($candidates)) {
+            return null;
+        }
+        uasort($candidates, static fn($a, $b) => $b['count'] <=> $a['count']);
+        $slug = (string)array_key_first($candidates);
+        $base = $candidates[$slug]['base'];
+
+        $info = ['slug' => $slug, 'base' => $base];
+        $yml = $this->httpGet($this->url . $base . $slug . '.info.yml', 5);
+        if (is_string($yml) && $yml !== '' && stripos($yml, '<html') === false) {
+            foreach (['name' => 'name', 'version' => 'version', 'description' => 'description', 'core_version_requirement' => 'core'] as $field => $key) {
+                if (preg_match('~^' . preg_quote($field, '~') . ':\s*[\'"]?(.+?)[\'"]?\s*$~im', $yml, $mm)) {
+                    $val = trim($mm[1]);
+                    if ($val !== '') {
+                        $info[$key] = $key === 'description' ? $this->truncate($val, 280) : $val;
+                    }
+                }
+            }
+        }
+        if (empty($info['name'])) {
+            $info['name'] = ucwords(str_replace(['-', '_'], ' ', $slug));
+        }
+        return $info;
+    }
+
+    /**
+     * Сторонні модулі Drupal за asset-шляхами:
+     * /sites/…/modules[/contrib]/SLUG/, /modules[/contrib]/SLUG/.
+     * Ядро (/core/modules/…) пропускається — це не «виявлення», а шум.
+     */
+    private function detectDrupalModules(string $html): array
+    {
+        $found = [];
+        if (preg_match_all('~(?<=["\'\(\\s=])/(?:sites/(?:default|all)/)?modules/(?:contrib/)?([a-z0-9_-]+)/~i', $html, $m)) {
+            foreach ($m[1] as $s) {
+                $slug = strtolower($s);
+                if ($slug === '' || in_array($slug, self::DRUPAL_CORE_MODULES, true)) {
+                    continue;
+                }
+                $found[$slug] = [
+                    'name' => ucwords(str_replace(['-', '_'], ' ', $slug)),
+                    'version' => null,
+                ];
+            }
+        }
+        $modules = array_values($found);
+        usort($modules, static fn($a, $b) => strcasecmp($a['name'], $b['name']));
+        return $modules;
+    }
+
+    /** Машинні імена модулів ядра Drupal — не показуємо як «виявлені». */
+    private const DRUPAL_CORE_MODULES = [
+        'views', 'views_ui', 'block', 'block_content', 'node', 'user', 'system',
+        'field', 'field_ui', 'filter', 'text', 'options', 'taxonomy', 'image',
+        'file', 'responsive_image', 'breakpoint', 'ckeditor5', 'ckeditor',
+        'contextual', 'toolbar', 'help', 'history', 'search', 'shortcut',
+        'menu_ui', 'menu_link_content', 'path', 'path_alias', 'language',
+        'locale', 'content_translation', 'config_translation', 'update',
+        'dblog', 'syslog', 'comment', 'contact', 'forum', 'book', 'statistics',
+        'aggregator', 'ban', 'color', 'dashboard', 'overlay', 'rdf', 'tracker',
+        'trigger', 'profile', 'poll', 'openid', 'phone', 'overlay',
+    ];
+
+    /**
+     * Вхід Drupal: стандартний /user/login з формою, або приховано.
+     */
+    private function detectDrupalLoginUrl(): array
+    {
+        $base = rtrim($this->url, '/');
+        $body = $this->httpGet($base . '/user/login', 6);
+        if (is_string($body) && $body !== '' && stripos($body, '<html') !== false) {
+            $low = strtolower($body);
+            $hasPass = str_contains($low, 'name="pass"') || str_contains($low, 'name="password"');
+            $isLogin = ((str_contains($low, 'id="user-login-form"') || str_contains($low, 'user-login-form')) && $hasPass)
+                || ($hasPass && str_contains($low, 'action="/user/login"'));
+            if ($isLogin) {
+                return [
+                    'url' => $base . '/user/login',
+                    'path' => '/user/login',
+                    'is_default' => true,
+                    'is_hidden' => false,
+                    'note' => 'Стандартна адреса входу доступна.',
+                ];
+            }
+        }
+        return [
+            'url' => null,
+            'path' => null,
+            'is_default' => false,
+            'is_hidden' => true,
+            'note' => 'Стандартна адреса /user/login не відповідає формою входу — '
+                . 'ймовірно, вхід перенесено/закрито (модулі Rename Admin Paths, Shield тощо).',
         ];
     }
 

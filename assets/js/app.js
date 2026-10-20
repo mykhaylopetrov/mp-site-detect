@@ -523,6 +523,82 @@
         return parts.join('');
     };
 
+    const renderDrupal = (d) => {
+        if (!d) return '';
+        const parts = [];
+
+        // Версія ядра
+        if (d.version) {
+            const sourceLabels = {
+                changelog: 'файл <em>/core/CHANGELOG.txt</em>',
+                'meta-generator': 'мета-тег generator',
+                'header-x-generator': 'заголовок <em>X-Generator</em>',
+            };
+            const sourceHtml = sourceLabels[d.version_source]
+                ? ` <span class="wp-version__source">(${sourceLabels[d.version_source]})</span>`
+                : '';
+            parts.push(`<div class="wp-version">
+                <span class="wp-version__label">Версія Drupal:</span>
+                <span class="wp-version__value">${escapeHtml(d.version)}</span>${sourceHtml}
+                ${d.version_note ? `<div class="wp-version__note">${escapeHtml(d.version_note)}</div>` : ''}
+            </div>`);
+        } else if (d.theme || (Array.isArray(d.modules) && d.modules.length)) {
+            parts.push(`<div class="wp-version wp-version--hidden">
+                <span class="wp-version__label">Версія Drupal:</span>
+                <span class="wp-version__value">прихована</span>
+            </div>`);
+        }
+
+        // Активна тема
+        if (d.theme) {
+            const t = d.theme;
+            parts.push(`<div class="wp-theme">
+                <div class="wp-theme__heading">
+                    <span class="wp-theme__label">Активна тема</span>
+                    <span class="wp-theme__name">${escapeHtml(t.name || t.slug || '—')}${
+                        t.version ? ' <span class="wp-theme__version">v' + escapeHtml(t.version) + '</span>' : ''
+                    }</span>
+                </div>
+                <div class="wp-theme__slug">Slug: <code>${escapeHtml(t.slug || '')}</code></div>
+            </div>`);
+        }
+
+        // Модулі
+        if (Array.isArray(d.modules) && d.modules.length > 0) {
+            const modList = d.modules.map((mm) => `
+                <div class="wp-plugin">
+                    <span class="wp-plugin__name">${escapeHtml(mm.name)}</span>
+                </div>
+            `).join('');
+            parts.push(`<div class="wp-plugins"><h4 class="wp-plugins__title">Виявлені модулі (${d.modules.length}):</h4><div class="wp-plugins__list">${modList}</div></div>`);
+        }
+
+        if (d.note) {
+            parts.push('<p class="wp-note">' + escapeHtml(d.note) + '</p>');
+        }
+
+        // Вхід
+        if (d.login_url) {
+            const li = d.login_url;
+            if (li.is_hidden) {
+                parts.push(`<div class="wp-login wp-login--hidden">
+                    <span class="wp-login__label">Адмін-панель</span>
+                    <span class="wp-login__badge wp-login__badge--hidden">приховано</span>
+                    <div class="wp-login__note">${escapeHtml(li.note || '')}</div>
+                </div>`);
+            } else if (li.url) {
+                parts.push(`<div class="wp-login">
+                    <span class="wp-login__label">Адмін-панель</span>
+                    <a class="wp-login__url" href="${escapeHtml(li.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(li.url)}</a>
+                    <span class="wp-login__badge">стандартна</span>
+                    ${li.note ? `<div class="wp-login__note">${escapeHtml(li.note)}</div>` : ''}
+                </div>`);
+            }
+        }
+
+        return parts.join('');
+    };
+
     const renderSiteInfo = (site) => {
         const data = {};
         if (site.title) data['Заголовок'] = site.title;
@@ -672,6 +748,10 @@
             if (item.joomla) {
                 joomlaHtml = '<div class="wp-inline">' + renderJoomla(item.joomla) + '</div>';
             }
+            let drupalHtml = '';
+            if (item.drupal) {
+                drupalHtml = '<div class="wp-inline">' + renderDrupal(item.drupal) + '</div>';
+            }
             return `
                 <div class="tech-item">
                     <div class="tech-item__head">
@@ -682,6 +762,7 @@
                     ${item.site ? `<a class="tech-item__link" href="${escapeHtml(item.site)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.site)} →</a>` : ''}
                     ${wpHtml}
                     ${joomlaHtml}
+                    ${drupalHtml}
                 </div>
             `;
         }).join('')}</div>`;
@@ -1143,6 +1224,18 @@
                     if (j.admin_url) {
                         if (j.admin_url.is_hidden) writeWrapped('Адмін-панель: приховано', 9, 'normal', [139, 136, 163]);
                         else if (j.admin_url.url) writeWrapped(`Адмін-панель: ${j.admin_url.url} (стандартна)`, 9, 'normal', [91, 87, 120]);
+                    }
+                }
+                if (item.drupal) {
+                    const dd = item.drupal;
+                    if (dd.version) writeWrapped(`Версія Drupal: ${dd.version}`, 9, 'normal', [31, 17, 71]);
+                    if (dd.theme) writeWrapped(`Тема: ${dd.theme.name || dd.theme.slug || '—'}${dd.theme.version ? ' v' + dd.theme.version : ''}`, 9, 'normal', [91, 87, 120]);
+                    if (Array.isArray(dd.modules) && dd.modules.length) {
+                        writeWrapped(`Модулі (${dd.modules.length}): ${dd.modules.map(mm=>mm.name).join(', ')}`, 9, 'normal', [91, 87, 120]);
+                    }
+                    if (dd.login_url) {
+                        if (dd.login_url.is_hidden) writeWrapped('Вхід: приховано', 9, 'normal', [139, 136, 163]);
+                        else if (dd.login_url.url) writeWrapped(`Вхід: ${dd.login_url.url} (стандартна)`, 9, 'normal', [91, 87, 120]);
                     }
                 }
                 y += 4;
