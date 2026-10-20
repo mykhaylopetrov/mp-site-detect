@@ -71,8 +71,16 @@ final class Cache
      *       fallback через TCP WHOIS (whois.ua → whois.uar.net) коли RDAP
      *       hostmaster.ua повертає 501/502 (cityhouse.lviv.ua).
      * - 19: прибрано примітку про CMS у секції БД («Сайт працює на CMS…») на прохання замовника.
+     * - 20: точність CMS/фреймворків у стилі Wappalyzer — зважені strong/weak-сигнали,
+     *       точний матчинг (межі слів, очищення base64-шуму), взаємовиключення CMS;
+     *       виправлено хибні MODX/Squarespace/ASP.NET на WordPress-сайтах (equides.com.ua).
+     * - 21: WP-плагіни як у Wappalyzer — версія з ?ver= asset-URL без зайвих запитів,
+     *       фільтр спільної ?ver= ядра WP, строгі readme/PHP-заголовки, +20 slug'ів у словнику
+     *       (WPML, Slider Revolution, SiteGround Optimizer тощо); веб-сервер — розбір
+     *       складених Server-заголовків (Apache/2.4.52 (Ubuntu)), нормалізація назв
+     *       (IIS/OpenResty), лише заголовки фінальної відповіді, захоплення Via/X-Server.
      */
-    public const SCHEMA_VERSION = 19;
+    public const SCHEMA_VERSION = 21;
 
     private string $dir;
     private int $ttl;
