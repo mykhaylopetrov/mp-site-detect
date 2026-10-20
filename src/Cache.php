@@ -79,8 +79,13 @@ final class Cache
      *       (WPML, Slider Revolution, SiteGround Optimizer тощо); веб-сервер — розбір
      *       складених Server-заголовків (Apache/2.4.52 (Ubuntu)), нормалізація назв
      *       (IIS/OpenResty), лише заголовки фінальної відповіді, захоплення Via/X-Server.
+     * - 22: маркери плагінів без asset'ів (Rank Math за коментарями), +1 сабпейдж
+     *       (сторінка запису через REST) для плагінів форм коментарів (Kama SpamBlock).
+     * - 23: версії marker-плагінів — readme.txt Stable tag для словникових slug'ів,
+     *       Yoast-версія з HTML-коментаря, AIOSEO-версія з meta generator,
+     *       мапа uploads-директорій (pum → popup-maker).
      */
-    public const SCHEMA_VERSION = 21;
+    public const SCHEMA_VERSION = 23;
 
     private string $dir;
     private int $ttl;
