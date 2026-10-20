@@ -668,8 +668,27 @@ final class Detector
         $rawHeaders = substr((string)$response, 0, (int)$headerSize);
         $body = substr((string)$response, (int)$headerSize);
 
-        $headers = $this->parseRawHeaders($rawHeaders);
+        // При FOLLOWLOCATION cURL склеює заголовки ВСІХ відповідей у ланцюжку
+        // редиректів. Для аналізу потрібні лише заголовки ФІНАЛЬНОЇ відповіді —
+        // інакше Server/X-Powered-By з проміжного 301/302 (часто іншого сервера)
+        // затирають реальні. Розбиваємо на блоки за статус-рядками і беремо останній.
+        $headers = $this->parseLastResponseHeaders($rawHeaders);
         return ['headers' => $headers, 'body' => $body];
+    }
+
+    /**
+     * Виділяє заголовки останньої відповіді з сирого блоку cURL
+     * (ккілька "HTTP/1.1 301 ..." + заголовки при редиректах).
+     *
+     * @return string[]
+     */
+    private function parseLastResponseHeaders(string $raw): array
+    {
+        $blocks = preg_split('~(?=^HTTP/\d(?:\.\d)?\s+\d{3}\b)~mi', $raw);
+        if (is_array($blocks) && count($blocks) > 1) {
+            $raw = (string)end($blocks);
+        }
+        return $this->parseRawHeaders($raw);
     }
 
     /**
@@ -696,43 +715,172 @@ final class Detector
     private function detectCms(string $html, ?string $generator): array
     {
         $candidates = $this->signatures['cms'] ?? [];
-        $found = [];
-
         $lower = strtolower($html);
-        if ($generator) {
-            $gen = strtolower($generator);
-            foreach ($candidates as $name => $info) {
+        // Прибираємо шум (base64-блоби, вбудовані шрифти/картинки), щоб короткі
+        // сигнали на кшталт "modx" / "sqsp" / "aspx" не спрацьовували всередині них.
+        // Wappalyzer шукає сигнали в тегах/атрибутах, а не в сирому тексті.
+        $cleanLower = strtolower($this->stripNoiseForDetection($html));
+
+        $scored = [];
+        foreach ($candidates as $name => $info) {
+            $strongHits = 0;
+            $weakHits = 0;
+            $hasGenerator = false;
+
+            if ($generator) {
+                $gen = strtolower($generator);
                 foreach ($info['generators'] ?? [] as $g) {
                     if (str_contains($gen, strtolower($g))) {
-                        $found[$name] = $info;
+                        $hasGenerator = true;
                         break;
+                    }
+                }
+            }
+
+            foreach ($info['strong'] ?? [] as $sign) {
+                if ($this->preciseSignMatch($html, $lower, $cleanLower, (string)$sign)) {
+                    $strongHits++;
+                }
+            }
+            foreach ($info['weak'] ?? [] as $sign) {
+                if ($this->preciseSignMatch($html, $lower, $cleanLower, (string)$sign)) {
+                    $weakHits++;
+                }
+            }
+            // Зворотна сумісність зі старим форматом 'signs': URL-подібні → strong, решта → weak.
+            foreach ($info['signs'] ?? [] as $sign) {
+                $s = strtolower((string)$sign);
+                $isUrlLike = (str_contains($s, '/') || str_contains($s, '.') || str_contains($s, ':') || str_contains($s, '='))
+                    && strlen($s) >= 5;
+                if (!$this->preciseSignMatch($html, $lower, $cleanLower, (string)$sign)) {
+                    continue;
+                }
+                if ($isUrlLike) {
+                    $strongHits++;
+                } else {
+                    $weakHits++;
+                }
+            }
+
+            // Поріг як у Wappalyzer: генератор або 1 strong, або ≥2 weak.
+            // Один слабкий сигнал (напр. "sqsp" чи "modx" десь у тексті) — недостатньо.
+            if (!$hasGenerator && $strongHits < 1 && $weakHits < 2) {
+                continue;
+            }
+
+            $score = ($hasGenerator ? 10 : 0) + $strongHits * 3 + $weakHits;
+            $scored[$name] = [
+                'info' => $info,
+                'score' => $score,
+                'strong' => $strongHits,
+                'weak' => $weakHits,
+                'hasGenerator' => $hasGenerator,
+            ];
+        }
+
+        if (empty($scored)) {
+            return [];
+        }
+
+        // Взаємовиключення CMS: дві різні CMS майже ніколи не стоять поруч.
+        // Якщо є CMS з авторитетним доказом (generator або ≥2 strong),
+        // відсікаємо інші, що мають лише 1 strong без генератора.
+        $hasAuthoritative = false;
+        foreach ($scored as $s) {
+            if ($s['hasGenerator'] || $s['strong'] >= 2) {
+                $hasAuthoritative = true;
+                break;
+            }
+        }
+        if ($hasAuthoritative) {
+            foreach ($scored as $name => $s) {
+                if (!$s['hasGenerator'] && $s['strong'] < 1) {
+                    unset($scored[$name]);
+                }
+            }
+            // Якщо залишилось кілька з по 1 strong — залишаємо лише найкращу.
+            // (напр. WordPress з /wp-content/ + /wp-includes/ перемагає MODX з 1 weak-пахотою)
+            if (count($scored) > 1) {
+                $maxScore = max(array_column($scored, 'score'));
+                // Залишаємо всі з генератором, інакше — лише топ за скором.
+                $withGen = array_filter($scored, static fn($s) => $s['hasGenerator']);
+                if (!empty($withGen)) {
+                    $scored = $withGen;
+                } else {
+                    $scored = array_filter($scored, static fn($s) => $s['score'] >= $maxScore);
+                    // При рівному скорі віддаємо перевагу більшому числу strong.
+                    if (count($scored) > 1) {
+                        $maxStrong = max(array_column($scored, 'strong'));
+                        $scored = array_filter($scored, static fn($s) => $s['strong'] >= $maxStrong);
                     }
                 }
             }
         }
 
-        foreach ($candidates as $name => $info) {
-            if (isset($found[$name])) {
-                continue;
-            }
-            foreach ($info['signs'] ?? [] as $sign) {
-                if (str_contains($lower, strtolower($sign))) {
-                    $found[$name] = $info;
-                    break;
-                }
-            }
-        }
-
         $result = [];
-        foreach ($found as $name => $info) {
+        foreach ($scored as $name => $s) {
+            $info = $s['info'];
             $result[] = [
                 'name' => $name,
-                'confidence' => $info['confidence'] ?? 'medium',
+                'confidence' => $info['confidence'] ?? ($s['hasGenerator'] || $s['strong'] > 0 ? 'high' : 'medium'),
                 'description' => $info['description'] ?? '',
                 'site' => $info['site'] ?? null,
             ];
         }
+        // Сортуємо за скором (найвпевненіша — перша).
+        usort($result, static function ($a, $b) use ($scored) {
+            return ($scored[$b['name']]['score'] ?? 0) <=> ($scored[$a['name']]['score'] ?? 0);
+        });
         return $result;
+    }
+
+    /**
+     * Видаляє шум для точного матчингу: data-URI з base64 та довгі
+     * безпробільні base64-ланцюжки (вбудовані шрифти/картинки в <style>/<script>).
+     * Саме в них хибно спрацьовували короткі сигнали "modx"/"sqsp"/"aspx".
+     */
+    private function stripNoiseForDetection(string $html): string
+    {
+        $clean = preg_replace('~data:[a-z0-9/+;_=-]+;base64,[A-Za-z0-9+/=]{120,}~i', ' ', $html);
+        if (!is_string($clean)) {
+            $clean = $html;
+        }
+        $clean = preg_replace('~[A-Za-z0-9+/=]{300,}~', ' ', $clean);
+        return is_string($clean) ? $clean : $html;
+    }
+
+    /**
+     * Точний матчинг сигналу в стилі Wappalyzer.
+     * - URL/шлях-подібні (з "/" "." ":" "=" довжиною ≥5) — підрядок, але в очищеному
+     *   HTML без base64-шуму (base64 не містить крапок, тож "squarespace.com" там неможливий).
+     * - __VIEWSTATE — лише як <input name="__VIEWSTATE"> (а не підрядок).
+     * - ".aspx" — лише з крапкою та межею слова (а не "aspx" всередині тексту).
+     * - Голі слова ("modx", "flask") — лише з межами слів \b на очищеному HTML.
+     */
+    private function preciseSignMatch(string $html, string $lower, string $cleanLower, string $sign): bool
+    {
+        $s = strtolower($sign);
+        if ($s === '') {
+            return false;
+        }
+
+        if ($s === '__viewstate') {
+            return (bool)preg_match('~<input[^>]+name\s*=\s*["\']__VIEWSTATE["\']~i', $html);
+        }
+
+        if ($s === 'aspx') {
+            // Вимагаємо ".aspx" з межею — як у посиланнях/формах, а не в base64.
+            return (bool)preg_match('~\.aspx\b~i', $html);
+        }
+
+        $isUrlLike = (str_contains($s, '/') || str_contains($s, '.') || str_contains($s, ':') || str_contains($s, '='))
+            && strlen($s) >= 5;
+        if ($isUrlLike) {
+            return str_contains($cleanLower, $s);
+        }
+
+        // Голе слово: межі слів на очищеному HTML.
+        return (bool)preg_match('~\b' . preg_quote($sign, '~') . '\b~i', $cleanLower);
     }
 
     /**
@@ -802,27 +950,56 @@ final class Detector
 
     private function detectFrameworks(string $html, array $headers): array
     {
-        $found = [];
         $lower = strtolower($html);
+        $cleanLower = strtolower($this->stripNoiseForDetection($html));
+        $found = [];
 
         foreach ($this->signatures['frameworks'] as $name => $info) {
-            $matched = false;
-            foreach ($info['signs'] ?? [] as $sign) {
-                if (str_contains($lower, strtolower($sign))) {
-                    $matched = true;
+            $strongHits = 0;
+            $weakHits = 0;
+            $headerHit = false;
+
+            foreach ($info['strong'] ?? [] as $sign) {
+                if ($this->preciseSignMatch($html, $lower, $cleanLower, (string)$sign)) {
+                    $strongHits++;
                     break;
                 }
             }
-            if (!$matched) {
-                foreach ($info['headers'] ?? [] as $h) {
-                    foreach ($headers as $header) {
-                        if (stripos($header, $h) !== false) {
-                            $matched = true;
-                            break 2;
-                        }
+            // Старі 'signs': URL-подібні вважаємо strong, голі слова — weak.
+            foreach ($info['signs'] ?? [] as $sign) {
+                $s = strtolower((string)$sign);
+                // Службовий маркер "x-powered-by: ..." шукаємо лише в заголовках, не в HTML.
+                if (str_starts_with($s, 'x-powered-by:')) {
+                    continue;
+                }
+                $isUrlLike = (str_contains($s, '/') || str_contains($s, '.') || str_contains($s, '='))
+                    && strlen($s) >= 5;
+                if (!$this->preciseSignMatch($html, $lower, $cleanLower, (string)$sign)) {
+                    continue;
+                }
+                if ($isUrlLike) {
+                    $strongHits++;
+                    break;
+                }
+                $weakHits++;
+            }
+            foreach ($info['weak'] ?? [] as $sign) {
+                if ($this->preciseSignMatch($html, $lower, $cleanLower, (string)$sign)) {
+                    $weakHits++;
+                }
+            }
+            foreach ($info['headers'] ?? [] as $h) {
+                foreach ($headers as $header) {
+                    if (stripos($header, $h) !== false) {
+                        $headerHit = true;
+                        break 2;
                     }
                 }
             }
+
+            // Поріг: заголовок або strong-сигнал, або ≥2 weak.
+            // Один weak (напр. "csrf-token", "aspx" у base64) — недостатньо.
+            $matched = $headerHit || $strongHits >= 1 || $weakHits >= 2;
             if ($matched) {
                 $found[$name] = $info;
             }
@@ -1003,6 +1180,8 @@ final class Detector
 
         $rawPoweredBy = null;
         $serverMatched = false;
+        $rawVia = null;
+        $rawXServer = null;
 
         foreach ($headers as $h) {
             $colon = strpos($h, ':');
@@ -1014,6 +1193,8 @@ final class Detector
 
             switch ($name) {
                 case 'server':
+                    // При ланцюжку редиректів беремо ОСТАННЄ значення Server
+                    // (фінальний сервер, а не проміжний 301-редирект).
                     $result['raw'] = $value;
                     $parsed = $this->parseServerHeader($value);
                     if ($parsed !== null) {
@@ -1026,9 +1207,20 @@ final class Detector
                         $serverMatched = $value !== '';
                     }
                     break;
+                case 'via':
+                    $rawVia = $value;
+                    break;
                 case 'x-powered-by':
                     $rawPoweredBy = $value;
                     $result['powered_by'] = $value;
+                    break;
+                case 'x-server':
+                case 'x-backend-server':
+                case 'x-served-by':
+                    // Додатковий орієнтир, коли Server приховано (Varnish/Fastly, балансувальники).
+                    if ($rawXServer === null && $value !== '') {
+                        $rawXServer = $name . ': ' . $value;
+                    }
                     break;
                 case 'x-frame-options':
                     $result['security_headers']['X-Frame-Options'] = $value;
@@ -1077,9 +1269,19 @@ final class Detector
             $lowerName = strtolower($result['name']);
             if ($lowerName === 'cloudflare') {
                 $result['note'] = 'Реальний веб-сервер прихований за Cloudflare (у заголовку Server: cloudflare)';
-            } elseif (in_array($lowerName, ['cloudfront', 'amazons3', 's3', 'akamai', 'akamaighost', 'netdna-cache'], true)) {
+            } elseif (in_array($lowerName, ['cloudfront', 'amazon s3', 'amazons3', 's3', 'akamai', 'akamaighost', 'netdna-cache', 'google web server', 'gws'], true)) {
                 $result['note'] = 'Реальний веб-сервер прихований за CDN (потрібно дивитись оригінальний Server-заголовок на початку ланцюга)';
+            } elseif ($lowerName === 'varnish' || $lowerName === 'squid' || $lowerName === 'envoy') {
+                $result['note'] = 'Виявлено reverse-proxy/кеш (' . $result['name'] . ') — реальний backend-сервер за ним не видно ззовні';
             }
+        }
+
+        // Зберігаємо Via / X-Server як доказ (фронтенд їх ігнорує, але вони є в JSON/PDF-дебагу).
+        if ($rawVia !== null) {
+            $result['via'] = mb_substr($rawVia, 0, 160);
+        }
+        if ($rawXServer !== null) {
+            $result['x_server'] = mb_substr($rawXServer, 0, 160);
         }
 
         // Точна версія PHP — лише якщо її прямо розкриває заголовок (X-Powered-By / Server), без здогадок за CMS
@@ -1682,7 +1884,11 @@ final class Detector
     }
 
     /**
-     * Парсер заголовка Server: nginx/1.18.0, Apache/2.4.41, cloudflare тощо.
+     * Парсер заголовка Server: nginx/1.24.0, Apache/2.4.52 (Ubuntu),
+     * LiteSpeed, Microsoft-IIS/10.0, cloudflare, openresty/1.21.4.1 тощо.
+     * Вміє розбирати СКЛАДЕНІ значення ("nginx/1.24.0 (Ubuntu)",
+     * "Apache/2.4.52 (Ubuntu) OpenSSL/1.1.1f", "Server: DPS/2.0 + nginx")
+     * як у Wappalyzer: шукає перший ВІДОМИЙ серверний токен, нормалізує назву.
      * Повертає масив ['name' => ..., 'version' => string|null] або null для порожніх/невалідних.
      */
     private function parseServerHeader(string $value): ?array
@@ -1692,24 +1898,62 @@ final class Detector
             return null;
         }
 
-        // Спроба стандартного "name/version" формату
-        if (preg_match('~^\s*([A-Za-z][A-Za-z0-9\-\.\+_]*)\s*/\s*([0-9][0-9\.\-]+[0-9a-zA-Z])\s*$~', $value, $m)) {
-            return ['name' => $m[1], 'version' => $m[2]];
-        }
-        // Без версії — просто назва
-        if (preg_match('~^\s*([A-Za-z][A-Za-z0-9\-\.\+_]*)\s*$~', $value, $m)) {
-            return ['name' => $m[1], 'version' => null];
-        }
-        // Складені назви на кшталт "Microsoft-IIS/10.0" — пробуємо витягнути перший "токен/version"
-        $parts = preg_split('~/\s*~', $value, 2);
-        if (is_array($parts) && count($parts) === 2) {
-            $name = trim($parts[0]);
-            $ver = trim($parts[1]);
-            if ($name !== '' && preg_match('~^[A-Za-z][A-Za-z0-9\-\.\+_]*$~', $name)
-                && preg_match('~^[0-9][0-9\.\-a-zA-Z]+$~', $ver)) {
-                return ['name' => $name, 'version' => $ver];
+        // Нормалізація відомих назв (різні написання → канонічна).
+        $normalize = static function (string $name): string {
+            $low = strtolower($name);
+            $map = [
+                'microsoft-iis' => 'IIS',
+                'iis' => 'IIS',
+                'openresty' => 'OpenResty',
+                'openlitespeed' => 'OpenLiteSpeed',
+                'litespeed' => 'LiteSpeed',
+                'cloudflare' => 'cloudflare',
+                'cloudfront' => 'cloudfront',
+                'amazons3' => 'Amazon S3',
+                'akamai' => 'Akamai',
+                'akamaighost' => 'AkamaiGHost',
+                'netdna-cache' => 'NetDNA-cache',
+                'gws' => 'Google Web Server',
+                'bigip' => 'BIG-IP',
+            ];
+            if (isset($map[$low])) {
+                return $map[$low];
             }
+            // nginx/Apache/Caddy/Lighttpd/Cherokee/Squid/Varnish/Envoy/Tengine/Cowboy/Kestrel — як є, з великої
+            $keep = ['nginx', 'apache', 'caddy', 'lighttpd', 'cherokee', 'squid', 'varnish', 'envoy', 'tengine', 'cowboy', 'kestrel', 'haproxy', 'trafficserver'];
+            if (in_array($low, $keep, true)) {
+                return ucfirst($low) === 'Nginx' ? 'nginx' : $name;
+            }
+            return $name;
+        };
+
+        // Збираємо всі токени "name[/version]" зі значення.
+        if (preg_match_all('~([A-Za-z][A-Za-z0-9\-\+\._]*)(?:/([0-9][0-9A-Za-z\.\-]+))?~', $value, $all, PREG_SET_ORDER)) {
+            $known = ['nginx', 'apache', 'litespeed', 'openlitespeed', 'openresty', 'caddy', 'microsoft-iis', 'iis', 'cloudflare', 'cloudfront', 'amazons3', 's3', 'akamai', 'akamaighost', 'netdna-cache', 'gws', 'varnish', 'squid', 'envoy', 'lighttpd', 'cherokee', 'tengine', 'haproxy', 'cowboy', 'kestrel', 'bigip'];
+            foreach ($all as $tok) {
+                $low = strtolower($tok[1]);
+                if (in_array($low, $known, true)) {
+                    $ver = isset($tok[2]) && $tok[2] !== '' ? $tok[2] : null;
+                    // Відсікаємо сміття на кшталт версії "(Ubuntu)" без цифр на початку — regex вже вимагає цифру.
+                    return ['name' => $normalize($tok[1]), 'version' => $ver];
+                }
+            }
+            // Відомого токена немає — повертаємо перший осмислений токен як є
+            // (напр. "DPS/2.0", "QRATOR", кастомний WAF).
+            $first = $all[0];
+            // Пропускаємо службові токени на кшталт "Ubuntu", "OpenSSL", "PHP", "mod_ssl".
+            foreach ($all as $tok) {
+                $low = strtolower($tok[1]);
+                if (in_array($low, ['ubuntu', 'debian', 'openssl', 'mod_ssl', 'php', 'mod_perl', 'mod_wsgi', 'unix'], true)) {
+                    continue;
+                }
+                $ver = isset($tok[2]) && $tok[2] !== '' ? $tok[2] : null;
+                return ['name' => $tok[1], 'version' => $ver];
+            }
+            $ver = isset($first[2]) && $first[2] !== '' ? $first[2] : null;
+            return ['name' => $first[1], 'version' => $ver];
         }
+
         return null;
     }
 
@@ -3110,28 +3354,83 @@ final class Detector
         return '';
     }
 
+    /**
+     * Виявлення активних плагінів WordPress.
+     * Як у Wappalyzer: збирає slug'и з усіх asset-URL (/wp-content/plugins/SLUG/...)
+     * і одразу знімає версію з ?ver= (без додаткових HTTP-запитів).
+     * Версія з ?ver=, що повторюється у ≥4 різних плагінів, відкидається —
+     * це типово версія ядра WP, яку WP підставляє за замовчуванням.
+     */
     private function detectWordPressPlugins(string $html): array
     {
-        $slugs = [];
-        if (preg_match_all('~/wp-content/plugins/([^/"\']+)/~i', $html, $matches)) {
-            foreach ($matches[1] as $slug) {
-                $slug = strtolower(trim($slug));
-                if ($slug === '' || str_contains($slug, '..') || str_contains($slug, '?')) {
+        $slugs = []; // slug => ['count' => int, 'ver' => ?string]
+
+        // a) Asset-URL з ?ver= — одразу фіксуємо кандидата на версію.
+        if (preg_match_all(
+            '~/wp-content/plugins/([^/"\'?#\s]+)/[^"\'\s<>]*?[?&]ver=([A-Za-z0-9][A-Za-z0-9._-]*)~i',
+            $html,
+            $m,
+            PREG_SET_ORDER
+        )) {
+            foreach ($m as $hit) {
+                $slug = strtolower(trim($hit[1]));
+                if ($slug === '' || str_contains($slug, '..') || str_contains($slug, '?')
+                    || !preg_match('~^[a-z0-9][a-z0-9_-]*$~', $slug)) {
                     continue;
                 }
-                $slugs[$slug] = true;
+                if (!isset($slugs[$slug])) {
+                    $slugs[$slug] = ['count' => 0, 'ver' => null];
+                }
+                $slugs[$slug]['count']++;
+                $ver = trim($hit[2], " \t\n\r\0\x0B\"'");
+                if ($slugs[$slug]['ver'] === null && $this->isPlausibleAssetVersion($ver)) {
+                    $slugs[$slug]['ver'] = $ver;
+                }
             }
         }
 
-        // Фільтруємо службові/системні плагіни, які не є реальними розширеннями
+        // b) Звичайні згадки шляху плагіна (покриває інлайн-JSON, CSS @import тощо).
+        if (preg_match_all('~/wp-content/plugins/([^/"\'?#\s]+)/~i', $html, $matches)) {
+            foreach ($matches[1] as $slug) {
+                $slug = strtolower(trim($slug));
+                if ($slug === '' || str_contains($slug, '..') || str_contains($slug, '?')
+                    || !preg_match('~^[a-z0-9][a-z0-9_-]*$~', $slug)) {
+                    continue;
+                }
+                if (!isset($slugs[$slug])) {
+                    $slugs[$slug] = ['count' => 0, 'ver' => null];
+                }
+                $slugs[$slug]['count']++;
+            }
+        }
+
+        // Фільтруємо службові/системні шляхи, які не є реальними плагінами.
         $ignore = ['mu-plugins', 'languages', 'wp-content', 'plugin-dir'];
         foreach ($ignore as $bad) {
             unset($slugs[$bad]);
         }
 
+        // Відсікаємо ?ver=, що однаковий у ≥4 плагінів — це версія ядра WP за замовчуванням,
+        // а не версія самих плагінів (wp_enqueue без $ver підставляє get_bloginfo('version')).
+        $verFreq = [];
+        foreach ($slugs as $meta) {
+            if ($meta['ver'] !== null) {
+                $verFreq[$meta['ver']] = ($verFreq[$meta['ver']] ?? 0) + 1;
+            }
+        }
+        foreach ($verFreq as $ver => $cnt) {
+            if ($cnt >= 4) {
+                foreach ($slugs as $slug => $meta) {
+                    if ($meta['ver'] === $ver) {
+                        $slugs[$slug]['ver'] = null;
+                    }
+                }
+            }
+        }
+
         $plugins = [];
-        foreach (array_keys($slugs) as $slug) {
-            $plugins[] = $this->resolveWpPlugin($slug);
+        foreach ($slugs as $slug => $meta) {
+            $plugins[] = $this->resolveWpPlugin($slug, $meta['ver']);
         }
 
         // Сортуємо за назвою
@@ -3142,7 +3441,25 @@ final class Detector
         return $plugins;
     }
 
-    private function resolveWpPlugin(string $slug): array
+    /**
+     * Чи схоже значення ?ver= на версію плагіна (а не на timestamp/cache-buster).
+     * Відсікає unix-timestamp'и (10+ цифр), md5-хеші та нечислові рядки.
+     */
+    private function isPlausibleAssetVersion(string $ver): bool
+    {
+        if ($ver === '' || strlen($ver) > 24) {
+            return false;
+        }
+        if (preg_match('~^[0-9]{10,}$~', $ver)) {
+            return false; // timestamp
+        }
+        if (preg_match('~^[a-f0-9]{32}$~i', $ver)) {
+            return false; // md5 cache-buster
+        }
+        return (bool)preg_match('~^\d+\.\d+~', $ver);
+    }
+
+    private function resolveWpPlugin(string $slug, ?string $assetVer = null): array
     {
         $info = ['slug' => $slug];
 
@@ -3152,41 +3469,67 @@ final class Detector
             if (!empty($entry['site'])) {
                 $info['site'] = $entry['site'];
             }
-            return $info;
-        }
-
-        // Спроба прочитати readme.txt плагіна
-        $readme = $this->httpGet($this->url . '/wp-content/plugins/' . $slug . '/readme.txt', 4);
-        if ($readme && preg_match('~Plugin Name:\s*(.+)~i', $readme, $m)) {
-            $info['name'] = trim($m[1]);
-            if (preg_match('~Stable tag:\s*(.+)~i', $readme, $v)) {
-                $tag = trim($v[1]);
-                if ($tag !== '' && is_numeric(str_replace('.', '', $tag))) {
-                    $info['version'] = $tag;
-                }
+            if ($assetVer !== null) {
+                $info['version'] = $assetVer;
+                $info['version_source'] = 'asset-ver';
             }
             return $info;
         }
 
-        // Спроба прочитати основний PHP-файл плагіна для заголовка
-        $candidates = [
-            $slug . '.php',
-            'plugin.php',
-            'index.php',
-        ];
-        foreach ($candidates as $file) {
+        // Спроба прочитати readme.txt плагіна (Stable tag = версія релізу).
+        $readme = $this->httpGet($this->url . '/wp-content/plugins/' . $slug . '/readme.txt', 4);
+        if (is_string($readme) && $readme !== '' && stripos($readme, '<html') === false
+            && preg_match('~^[ \t*]*Plugin Name:\s*(.+?)\s*$~im', $readme, $m)) {
+            $info['name'] = trim($m[1]);
+            $version = null;
+            $versionSource = null;
+            if (preg_match('~^[ \t*]*Stable tag:\s*([0-9][0-9A-Za-z._-]*)\s*$~im', $readme, $v)
+                && preg_match('~^\d+\.\d+~', trim($v[1]))) {
+                $version = trim($v[1]);
+                $versionSource = 'readme';
+            } elseif ($assetVer !== null) {
+                $version = $assetVer;
+                $versionSource = 'asset-ver';
+            }
+            if ($version !== null) {
+                $info['version'] = $version;
+                $info['version_source'] = $versionSource;
+            }
+            return $info;
+        }
+
+        // Спроба прочитати заголовок основного PHP-файла плагіна.
+        // index.php свідомо пропущено: у 99% це заглушка "Silence is golden" без заголовка.
+        foreach ([$slug . '.php', 'plugin.php'] as $file) {
             $php = $this->httpGet($this->url . '/wp-content/plugins/' . $slug . '/' . $file, 4);
-            if ($php && preg_match('~Plugin Name:\s*(.+)~i', $php, $m)) {
+            if (!is_string($php) || $php === '' || stripos($php, '<html') !== false) {
+                continue;
+            }
+            if (preg_match('~^[ \t*]*Plugin Name:\s*(.+?)\s*$~im', $php, $m)) {
                 $info['name'] = trim($m[1]);
-                if (preg_match('~Version:\s*(.+)~i', $php, $v)) {
-                    $info['version'] = trim($v[1]);
+                $version = null;
+                $versionSource = null;
+                if (preg_match('~^[ \t*]*Version:\s*([0-9][0-9A-Za-z._-]*)\s*$~im', $php, $v)) {
+                    $version = trim($v[1]);
+                    $versionSource = 'plugin-header';
+                } elseif ($assetVer !== null) {
+                    $version = $assetVer;
+                    $versionSource = 'asset-ver';
+                }
+                if ($version !== null) {
+                    $info['version'] = $version;
+                    $info['version_source'] = $versionSource;
                 }
                 return $info;
             }
         }
 
-        // Fallback: гарно форматуємо slug
+        // Fallback: гарно форматуємо slug; версію беремо з ?ver= якщо є.
         $info['name'] = ucwords(str_replace(['-', '_'], ' ', $slug));
+        if ($assetVer !== null) {
+            $info['version'] = $assetVer;
+            $info['version_source'] = 'asset-ver';
+        }
         return $info;
     }
 
@@ -3276,6 +3619,25 @@ final class Detector
         'duplicator' => ['name' => 'Duplicator', 'site' => 'https://duplicator.com'],
         'duplicate-post' => ['name' => 'Duplicate Post', 'site' => 'https://duplicate-post.uk'],
         'duplicate-page' => ['name' => 'Duplicate Page', 'site' => 'https://wordpress.org/plugins/duplicate-page'],
+        'sitepress-multilingual-cms' => ['name' => 'WPML Multilingual CMS', 'site' => 'https://wpml.org'],
+        'wpml-string-translation' => ['name' => 'WPML String Translation', 'site' => 'https://wpml.org'],
+        'wpml-translation-management' => ['name' => 'WPML Translation Management', 'site' => 'https://wpml.org'],
+        'revslider' => ['name' => 'Slider Revolution', 'site' => 'https://www.sliderrevolution.com'],
+        'layerslider' => ['name' => 'LayerSlider', 'site' => 'https://layerslider.com'],
+        'smart-slider-3' => ['name' => 'Smart Slider 3', 'site' => 'https://smartslider3.com'],
+        'ml-slider' => ['name' => 'MetaSlider', 'site' => 'https://www.metaslider.com'],
+        'instagram-feed' => ['name' => 'Smash Balloon Instagram Feed', 'site' => 'https://smashballoon.com/instagram-feed'],
+        'custom-facebook-feed' => ['name' => 'Smash Balloon Facebook Feed', 'site' => 'https://smashballoon.com/facebook-feed'],
+        'google-site-kit' => ['name' => 'Site Kit by Google', 'site' => 'https://sitekit.withgoogle.com'],
+        'sg-cachepress' => ['name' => 'SiteGround Optimizer', 'site' => 'https://www.siteground.com'],
+        'wp-optimize' => ['name' => 'WP-Optimize', 'site' => 'https://getwpo.com'],
+        'nitropack' => ['name' => 'NitroPack', 'site' => 'https://nitropack.io'],
+        'perfmatters' => ['name' => 'Perfmatters', 'site' => 'https://perfmatters.io'],
+        'borlabs-cookie' => ['name' => 'Borlabs Cookie', 'site' => 'https://borlabs.io'],
+        'cookieyes' => ['name' => 'CookieYes', 'site' => 'https://www.cookieyes.com'],
+        'omgf' => ['name' => 'OMGF | Host Google Fonts Locally', 'site' => 'https://wordpress.org/plugins/host-webfonts-local'],
+        'flying-press' => ['name' => 'FlyingPress', 'site' => 'https://flying-press.com'],
+        'heartbeat-control' => ['name' => 'Heartbeat Control', 'site' => 'https://wordpress.org/plugins/heartbeat-control'],
         'really-simple-ssl' => ['name' => 'Really Simple SSL', 'site' => 'https://really-simple-ssl.com'],
         'classic-editor' => ['name' => 'Classic Editor', 'site' => 'https://wordpress.org/plugins/classic-editor'],
         'classic-widgets' => ['name' => 'Classic Widgets', 'site' => 'https://wordpress.org/plugins/classic-widgets'],
@@ -3382,7 +3744,8 @@ final class Detector
                     'site' => 'https://wordpress.org',
                 ],
                 'Joomla' => [
-                    'signs' => ['/administrator/', '/components/com_', 'Joomla!', '/templates/beez3/', 'com_content'],
+                    'strong' => ['/components/com_', 'Joomla!'],
+                    'weak' => ['/administrator/', '/templates/beez', 'com_content'],
                     'generators' => ['Joomla'],
                     'confidence' => 'high',
                     'description' => 'CMS для сайтів, порталів та інтернет-магазинів.',
@@ -3410,21 +3773,24 @@ final class Detector
                     'site' => 'https://www.prestashop.com',
                 ],
                 'Magento' => [
-                    'signs' => ['/skin/frontend/', 'mage/cookies.js', 'magento', 'Mage.Cookies', '/static/frontend/'],
+                    'strong' => ['/skin/frontend/', 'mage/cookies.js', '/static/frontend/', 'Mage.Cookies', 'text/x-magento-init'],
+                    'weak' => ['magento'],
                     'generators' => ['Magento'],
                     'confidence' => 'high',
                     'description' => 'Потужна платформа для електронної комерції.',
                     'site' => 'https://magento.com',
                 ],
                 '1С-Бітрікс' => [
-                    'signs' => ['/bitrix/', 'bx-', 'bitrix24'],
+                    'strong' => ['/bitrix/', 'bitrix24', 'bx-core', 'BX.message', '/bitrix/js/'],
+                    'weak' => ['bitrix'],
                     'generators' => ['Bitrix', '1С-Битрикс'],
                     'confidence' => 'high',
                     'description' => 'Популярна українська/російська CMS.',
                     'site' => 'https://www.1c-bitrix.ru',
                 ],
                 'MODX' => [
-                    'signs' => ['/assets/components/', 'modx', 'MODX'],
+                    'strong' => ['/assets/components/modx', 'MODX_', 'modxrevolution', 'manager/templates/', 'assets/snippets/', 'modx-'],
+                    'weak' => ['/assets/components/'],
                     'generators' => ['MODX'],
                     'confidence' => 'high',
                     'description' => 'Гнучка CMS з відкритим кодом.',
@@ -3452,28 +3818,32 @@ final class Detector
                     'site' => 'https://tilda.cc',
                 ],
                 'Squarespace' => [
-                    'signs' => ['squarespace.com', 'sqsp', 'squarespace-cdn'],
+                    'strong' => ['squarespace.com', 'squarespace-cdn', 'static.squarespace', 'sqsp-cdn'],
+                    'weak' => ['squarespace'],
                     'generators' => ['Squarespace'],
                     'confidence' => 'high',
                     'description' => 'Конструктор сайтів із шаблонами.',
                     'site' => 'https://www.squarespace.com',
                 ],
                 'Ghost' => [
-                    'signs' => ['ghost.io', 'ghost.min.js', 'ghost-script', 'content-api'],
+                    'strong' => ['ghost.io', 'ghost.min.js', 'ghost-script'],
+                    'weak' => ['content-api'],
                     'generators' => ['Ghost'],
                     'confidence' => 'high',
                     'description' => 'Платформа для блогів та публікацій.',
                     'site' => 'https://ghost.org',
                 ],
                 'phpBB' => [
-                    'signs' => ['phpBB', '/styles/prosilver/'],
+                    'strong' => ['/styles/prosilver/'],
+                    'weak' => ['phpBB'],
                     'generators' => ['phpBB'],
                     'confidence' => 'high',
                     'description' => 'Форумний двигун на PHP.',
                     'site' => 'https://www.phpbb.com',
                 ],
                 'vBulletin' => [
-                    'signs' => ['vbulletin', 'vbulletin.css'],
+                    'strong' => ['vbulletin.css', 'vbulletin-core'],
+                    'weak' => ['vbulletin'],
                     'generators' => ['vBulletin'],
                     'confidence' => 'medium',
                     'description' => 'Форумний двигун.',
@@ -3490,14 +3860,16 @@ final class Detector
             'frameworks' => [
                 'Laravel' => [
                     'type' => 'PHP-фреймворк',
-                    'signs' => ['csrf-token', 'laravel', 'X-CSRF-TOKEN', 'laravel_session'],
+                    'strong' => ['laravel', 'laravel_session'],
+                    'weak' => ['csrf-token'],
                     'headers' => ['Set-Cookie: laravel_session'],
                     'description' => 'Популярний PHP-фреймворк з елегантним синтаксисом.',
                     'site' => 'https://laravel.com',
                 ],
                 'Symfony' => [
                     'type' => 'PHP-фреймворк',
-                    'signs' => ['symfony', '_sf2_', '/bundles/'],
+                    'strong' => ['symfony', '_sf2_'],
+                    'weak' => ['/bundles/'],
                     'headers' => ['X-Debug-Token', 'Set-Cookie: phpsession'],
                     'description' => 'Потужний PHP-фреймворк для великих проєктів.',
                     'site' => 'https://symfony.com',
@@ -3538,7 +3910,7 @@ final class Detector
                 ],
                 'Vue.js' => [
                     'type' => 'JavaScript-фреймворк',
-                    'signs' => [
+                    'strong' => [
                         'vue.global.js',
                         'vue.runtime.global.js',
                         'vue.esm-browser.js',
@@ -3547,8 +3919,8 @@ final class Detector
                         '__vue_app__',
                         '__vue_component__',
                         'data-v-',
-                        'createapp(',
                     ],
+                    'weak' => ['createapp('],
                     'description' => 'Прогресивний JS-фреймворк.',
                     'site' => 'https://vuejs.org',
                 ],
@@ -3584,26 +3956,30 @@ final class Detector
                 ],
                 'Express' => [
                     'type' => 'Node.js-фреймворк',
-                    'signs' => ['x-powered-by: express'],
+                    'strong' => [],
+                    'weak' => [],
                     'headers' => ['X-Powered-By: Express'],
                     'description' => 'Мінімалістичний Node.js-фреймворк.',
                     'site' => 'https://expressjs.com',
                 ],
                 'Django' => [
                     'type' => 'Python-фреймворк',
-                    'signs' => ['csrfmiddlewaretoken', 'django', 'csrf_token'],
+                    'strong' => ['csrfmiddlewaretoken', 'django'],
+                    'weak' => [],
                     'description' => 'Python-фреймворк для швидкої розробки.',
                     'site' => 'https://www.djangoproject.com',
                 ],
                 'Flask' => [
                     'type' => 'Python-фреймворк',
-                    'signs' => ['flask'],
+                    'strong' => ['flask'],
+                    'weak' => [],
                     'description' => 'Мікрофреймворк для Python.',
                     'site' => 'https://flask.palletsprojects.com',
                 ],
                 'ASP.NET' => [
                     'type' => '.NET-фреймворк',
-                    'signs' => ['asp.net', '__viewstate', 'aspx'],
+                    'strong' => ['asp.net', '__viewstate', '.aspx'],
+                    'weak' => [],
                     'headers' => ['X-AspNet-Version', 'X-Powered-By: ASP.NET'],
                     'description' => 'Фреймворк від Microsoft.',
                     'site' => 'https://dotnet.microsoft.com/apps/aspnet',
