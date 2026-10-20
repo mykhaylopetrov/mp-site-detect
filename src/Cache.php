@@ -84,8 +84,10 @@ final class Cache
      * - 23: версії marker-плагінів — readme.txt Stable tag для словникових slug'ів,
      *       Yoast-версія з HTML-коментаря, AIOSEO-версія з meta generator,
      *       мапа uploads-директорій (pum → popup-maker).
+     * - 24: серверна секція — HTTP-протокол (h1/h2/h3), вторинні токени Server
+     *       (OpenSSL/…), PHP-інференс (PHPSESSID/CMS), показ Via/X-Server.
      */
-    public const SCHEMA_VERSION = 23;
+    public const SCHEMA_VERSION = 24;
 
     private string $dir;
     private int $ttl;

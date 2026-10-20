@@ -19,6 +19,8 @@ final class Detector
     private array $httpHeaders = [];
     private ?string $html = null;
     private array $signatures = [];
+    /** Узгоджена версія HTTP-протоколу основного запиту (HTTP/1.1, HTTP/2, …) або null. */
+    private ?string $httpVersion = null;
 
     public function __construct(string $input)
     {
@@ -189,7 +191,7 @@ final class Detector
                 $onSection('frameworks', $frameworks);
             }
 
-            $serverInfo = $this->detectWebServer($this->httpHeaders);
+            $serverInfo = $this->detectWebServer($this->httpHeaders, $cms, $frameworks);
             $cdn = $this->detectCdn($this->httpHeaders, $html);
             $dbInfo = $this->detectDatabase($this->httpHeaders, $html, $cms, $frameworks, []);
             $nodeInfo = $this->detectNodeJs($this->httpHeaders, $html);
@@ -199,7 +201,7 @@ final class Detector
         } else {
             // Навіть якщо HTML не завантажився, пробуємо визначити сервер за заголовками (можуть бути з редиректу)
             if (!empty($this->httpHeaders)) {
-                $serverInfo = $this->detectWebServer($this->httpHeaders);
+                $serverInfo = $this->detectWebServer($this->httpHeaders, $cms, $frameworks);
             } else {
                 $serverInfo = ['name' => 'невідомо', 'version' => null, 'raw' => null, 'powered_by' => null, 'security_headers' => [], 'note' => 'Server-заголовок відсутній'];
             }
@@ -661,6 +663,15 @@ final class Detector
         }
         $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        // Узгоджена версія протоколу фінальної відповіді (реальний факт про стек).
+        $protoNum = (int)curl_getinfo($ch, CURLINFO_HTTP_VERSION);
+        $this->httpVersion = match (true) {
+            $protoNum === (int)CURL_HTTP_VERSION_1_0 => 'HTTP/1.0',
+            $protoNum === (int)CURL_HTTP_VERSION_1_1 => 'HTTP/1.1',
+            in_array($protoNum, [(int)CURL_HTTP_VERSION_2_0, (int)CURL_HTTP_VERSION_2TLS, (int)CURL_HTTP_VERSION_2_PRIOR_KNOWLEDGE], true) => 'HTTP/2',
+            defined('CURL_HTTP_VERSION_3') && $protoNum === (int)CURL_HTTP_VERSION_3 => 'HTTP/3',
+            default => null,
+        };
         if (PHP_VERSION_ID < 80000) {
             curl_close($ch);
         }
@@ -1163,9 +1174,13 @@ final class Detector
      *     'security_headers' => array        — X-Frame-Options, HSTS, CSP тощо
      *     'note'             => string|null  — пояснення, якщо сервер прихований
      *     'raw'              => string|null  — необроблене значення Server-заголовка
+     *     'server_modules'   => array        — вторинні токени з Server (OpenSSL/PHP …)
+     *     'via'/'x_server'   => string|null  — докази проксі/бекенда
+     *     'php_present'      => bool         — чи точно є PHP (заголовки/cookie/CMS-інференс)
+     *     'php_source'       => string|null  — джерело висновку про PHP
      *   ]
      */
-    private function detectWebServer(array $headers): array
+    private function detectWebServer(array $headers, array $cms = [], array $frameworks = []): array
     {
         $result = [
             'name' => 'невідомо',
@@ -1173,6 +1188,9 @@ final class Detector
             'powered_by' => null,
             'php_version' => null,
             'php_version_source' => null,
+            'php_present' => false,
+            'php_source' => null,
+            'server_modules' => [],
             'security_headers' => [],
             'note' => null,
             'raw' => null,
@@ -1200,6 +1218,9 @@ final class Detector
                     if ($parsed !== null) {
                         $result['name'] = $parsed['name'];
                         $result['version'] = $parsed['version'];
+                        if (!empty($parsed['extras'])) {
+                            $result['server_modules'] = $parsed['extras'];
+                        }
                         $serverMatched = true;
                     } else {
                         // Невідомий формат — все одно показуємо як є
@@ -1319,9 +1340,50 @@ final class Detector
         if ($phpVersion !== null) {
             $result['php_version'] = $phpVersion;
             $result['php_version_source'] = $phpSource;
+            $result['php_present'] = true;
+            $result['php_source'] = $phpSource;
         } else {
             // Явно прибираємо порожні php-поля, щоб не засмічувати відповідь
             unset($result['php_version'], $result['php_version_source']);
+        }
+
+        // Присутність PHP без точної версії (чесний інференс, як у БД):
+        // 1) PHP-токен у Server без версії, 2) cookie PHPSESSID, 3) PHP-CMS/фреймворк.
+        if (!$result['php_present']) {
+            if ($rawPoweredBy !== null && stripos($rawPoweredBy, 'php') !== false) {
+                $result['php_present'] = true;
+                $result['php_source'] = 'X-Powered-By';
+            } elseif ($result['raw'] !== null && preg_match('~php(?:$|[^a-z])~i', $result['raw'])) {
+                $result['php_present'] = true;
+                $result['php_source'] = 'Server';
+            } else {
+                foreach ($headers as $h) {
+                    if (stripos($h, 'PHPSESSID') !== false) {
+                        $result['php_present'] = true;
+                        $result['php_source'] = 'Set-Cookie: PHPSESSID';
+                        break;
+                    }
+                }
+            }
+        }
+        if (!$result['php_present']) {
+            $phpCms = ['WordPress', 'Joomla', 'Drupal', 'OpenCart', 'PrestaShop', 'Magento', '1С-Бітрікс', 'MODX', 'phpBB', 'vBulletin'];
+            foreach ($cms as $c) {
+                if (in_array($c['name'] ?? '', $phpCms, true)) {
+                    $result['php_present'] = true;
+                    $result['php_source'] = 'CMS inference (' . $c['name'] . ')';
+                    break;
+                }
+            }
+            if (!$result['php_present']) {
+                foreach ($frameworks as $fw) {
+                    if (in_array($fw['name'] ?? '', ['Laravel', 'Symfony', 'Yii', 'CodeIgniter', 'CakePHP'], true)) {
+                        $result['php_present'] = true;
+                        $result['php_source'] = 'Framework inference (' . $fw['name'] . ')';
+                        break;
+                    }
+                }
+            }
         }
 
         return $result;
@@ -1452,7 +1514,10 @@ final class Detector
     {
         $result = $serverInfo;
 
-        // PHP вже у $serverInfo (php_version / php_version_source) — залишаємо як є
+        // PHP вже у $serverInfo (php_version / php_present / php_source) — залишаємо як є
+
+        // Узгоджений HTTP-протокол основного запиту (реальний факт про стек).
+        $result['http_version'] = $this->httpVersion;
 
         // Node.js
         $result['node_present'] = $nodeInfo['present'] ?? false;
@@ -1889,7 +1954,9 @@ final class Detector
      * Вміє розбирати СКЛАДЕНІ значення ("nginx/1.24.0 (Ubuntu)",
      * "Apache/2.4.52 (Ubuntu) OpenSSL/1.1.1f", "Server: DPS/2.0 + nginx")
      * як у Wappalyzer: шукає перший ВІДОМИЙ серверний токен, нормалізує назву.
-     * Повертає масив ['name' => ..., 'version' => string|null] або null для порожніх/невалідних.
+     * Додатково збирає вторинні токени (OpenSSL/mod_ssl/PHP) у 'extras'.
+     * Повертає масив ['name' => ..., 'version' => string|null, 'extras' => array]
+     * або null для порожніх/невалідних.
      */
     private function parseServerHeader(string $value): ?array
     {
@@ -1930,12 +1997,22 @@ final class Detector
         // Збираємо всі токени "name[/version]" зі значення.
         if (preg_match_all('~([A-Za-z][A-Za-z0-9\-\+\._]*)(?:/([0-9][0-9A-Za-z\.\-]+))?~', $value, $all, PREG_SET_ORDER)) {
             $known = ['nginx', 'apache', 'litespeed', 'openlitespeed', 'openresty', 'caddy', 'microsoft-iis', 'iis', 'cloudflare', 'cloudfront', 'amazons3', 's3', 'akamai', 'akamaighost', 'netdna-cache', 'gws', 'varnish', 'squid', 'envoy', 'lighttpd', 'cherokee', 'tengine', 'haproxy', 'cowboy', 'kestrel', 'bigip'];
+            // Вторинні токени з версіями, які варто показати окремо (реальні факти).
+            $extras = [];
+            foreach ($all as $tok) {
+                $lowTok = strtolower($tok[1]);
+                if (in_array($lowTok, ['openssl', 'mod_ssl'], true) && isset($tok[2]) && $tok[2] !== '') {
+                    $extras['OpenSSL'] = $tok[2];
+                } elseif ($lowTok === 'php' && isset($tok[2]) && $tok[2] !== '') {
+                    $extras['PHP'] = $tok[2];
+                }
+            }
             foreach ($all as $tok) {
                 $low = strtolower($tok[1]);
                 if (in_array($low, $known, true)) {
                     $ver = isset($tok[2]) && $tok[2] !== '' ? $tok[2] : null;
                     // Відсікаємо сміття на кшталт версії "(Ubuntu)" без цифр на початку — regex вже вимагає цифру.
-                    return ['name' => $normalize($tok[1]), 'version' => $ver];
+                    return ['name' => $normalize($tok[1]), 'version' => $ver, 'extras' => $extras];
                 }
             }
             // Відомого токена немає — повертаємо перший осмислений токен як є
@@ -1948,10 +2025,10 @@ final class Detector
                     continue;
                 }
                 $ver = isset($tok[2]) && $tok[2] !== '' ? $tok[2] : null;
-                return ['name' => $tok[1], 'version' => $ver];
+                return ['name' => $tok[1], 'version' => $ver, 'extras' => $extras];
             }
             $ver = isset($first[2]) && $first[2] !== '' ? $first[2] : null;
-            return ['name' => $first[1], 'version' => $ver];
+            return ['name' => $first[1], 'version' => $ver, 'extras' => $extras];
         }
 
         return null;
