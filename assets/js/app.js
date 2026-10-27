@@ -342,7 +342,8 @@
             </div>`);
         }
 
-        // Page builder(s) — може бути кілька (наприклад, Gutenberg + Elementor)
+        // Page builder(s) — може бути кілька (наприклад, Elementor + WPBakery).
+        // Gutenberg тут немає свідомо: він у ядрі WP за замовчуванням.
         const builders = Array.isArray(wp.page_builders)
             ? wp.page_builders
             : (wp.page_builder ? [wp.page_builder] : []);

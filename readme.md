@@ -122,8 +122,10 @@ WHOIS-дані домену, використану CMS (з деталями Wor
   додатково завантажується інформація про батьківську тему (ім'я, версія, автор).
 
 - **Конструктор сторінок (page builder)** — повертається масивом усіх виявлених
-  конструкторів (сайт може мати і Gutenberg, і Elementor одночасно). Сигнали в порядку
-  пріоритету:
+  конструкторів (сайт може мати, наприклад, і Elementor, і WPBakery одночасно).
+  **Gutenberg (Block Editor) сюди не входить**: він є ядром WordPress
+  за замовчуванням і часто присутній паралельно з іншими конструкторами,
+  тому його показ лише створював би шум. Сигнали в порядку пріоритету:
   1. Клас у `<body>` (найточніше).
   2. Наявність плагіна.
   3. Характерні сліди в HTML (класи, атрибути, коментарі).
@@ -134,10 +136,6 @@ WHOIS-дані домену, використану CMS (з деталями Wor
   - **Bricks** — `bricks-is-frontend`, шлях `/wp-content/themes/bricks/`
   - **Beaver Builder** — `fl-builder`, плагін `beaver-builder-lite-version`
   - **WPBakery (Visual Composer)** — `wpb_row`, `vc_row`, плагін `js_composer`
-  - **Gutenberg (Block Editor)** — `<!-- wp:…` коментарі, класи `wp-block-*`,
-    `is-layout-*`, `wp-elements-*`, `alignwide/alignfull`, `has-global-padding`
-    (плюс додаткова перевірка, що блоки реально присутні, щоб не спрацьовувати
-    на адмінці без контенту)
   - **SiteOrigin Page Builder** — `siteorigin-panels`
   - **Thrive Architect** — плагін `thrive-visual-editor`
   - **Oxygen** — плагін `oxygen`
@@ -523,8 +521,8 @@ mp-site-detect/
 - Директорія `cache/` захищена від прямого HTTP-доступу через `.htaccess`.
 - **Версіонування схеми** (`schema_version`): при несумісних змінах структури
   даних константа `Cache::SCHEMA_VERSION` інкрементується — старі записи
-  автоматично вважаються невалідними і перезаписуються. Поточна версія: **28**
-  (прибрано окремі `sections.site`, `sections.technologies`, `sections.wordpress` — тепер `sections.cms[].wordpress`; `sections.cdn`/`sections.db` об'єднано в `sections.server`; додано Node.js/Python у `sections.server`; додано `sections.pagespeed` — Google PSI mobile+desktop).
+  автоматично вважаються невалідними і перезаписуються. Поточна версія: **29**
+  (прибрано окремі `sections.site`, `sections.technologies`, `sections.wordpress` — тепер `sections.cms[].wordpress`; `sections.cdn`/`sections.db` об'єднано в `sections.server`; додано Node.js/Python у `sections.server`; додано `sections.pagespeed` — Google PSI mobile+desktop; з `page_builders` прибрано Gutenberg).
 
 **Алгоритм:**
 

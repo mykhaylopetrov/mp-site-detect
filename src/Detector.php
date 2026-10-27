@@ -3448,8 +3448,12 @@ final class Detector
     /**
      * Визначення усіх конструкторів сторінок, які використовуються на сайті.
      *
-     * Повертає масив — адже на сайті може одночасно бути і Gutenberg (для постів,
-     * віджетів, шапки/футера), і Elementor (для головної), і комбінації інших.
+     * Повертає масив — адже на сайті може одночасно бути і Elementor,
+     * і WPBakery, і комбінації інших.
+     *
+     * УВАГА: Gutenberg (Block Editor) сюди свідомо НЕ входить — він є ядром
+     * WordPress за замовчуванням і часто присутній паралельно з Elementor,
+     * тому його показ лише створює шум.
      *
      * Для кожного кандидата перевіряє три рівні сигналів у порядку пріоритету:
      *   1. body class    — найточніший
@@ -3470,19 +3474,6 @@ final class Detector
                 $pluginSlugs[] = strtolower($p['slug']);
             }
         }
-
-        // Допоміжна ознака: наявність Gutenberg-блоків у контенті.
-        // Шукаємо:
-        //   • <!-- wp:... --> HTML-коментарі, які Gutenberg залишає в контенті
-        //   • class="...wp-block-..." / class='...wp-block-...' — рендер блоків
-        //   • class="...is-layout-..." — нові layout-класи
-        //   • class="...wp-elements-..." — Element class names із block.json
-        //   • alignwide/alignfull/has-global-padding — типові Gutenberg-класи
-        $hasGutenbergBlocks = (bool)preg_match(
-            '~(?:<!--\s*wp:|class\s*=\s*["\'][^"\']*\b(?:wp-block-|is-layout-|wp-elements-)|'
-            . '\balignwide\b|\balignfull\b|\bhas-global-padding\b)~i',
-            $html
-        );
 
         $builders = [
             [
@@ -3529,33 +3520,6 @@ final class Detector
                 'body_classes' => ['wpb_row', 'vc_row', 'vc_row-o-full-height', 'wpb_column'],
                 'plugin_slugs' => ['js_composer', 'visual_composer', 'wpbakery-visual-composer'],
                 'signs' => ['/wp-content/plugins/js_composer/'],
-            ],
-            [
-                'name' => 'Gutenberg (Block Editor)',
-                'description' => 'Стандартний блоковий редактор WordPress (з версії 5.0).',
-                'site' => 'https://wordpress.org/gutenberg',
-                'body_classes' => ['wp-is-using-gutenberg'],
-                'plugin_slugs' => ['gutenberg'],
-                'signs' => [
-                    '<!-- wp:',
-                    '<!-- /wp:',
-                    'class="wp-block-',
-                    'class=\'wp-block-',
-                    'class="is-layout-',
-                    'class="wp-elements-',
-                    'wp-block-library',
-                    'is-layout-flow',
-                    'is-layout-constrained',
-                    'wp-block-',
-                    'is-layout-',
-                    'wp-elements-',
-                    'alignwide',
-                    'alignfull',
-                    'has-global-padding',
-                ],
-                // Додаткова умова: визнаємо лише якщо в HTML є бодай один Gutenberg-блок
-                // (інакше плагін міг бути просто активований у адмінці без реального контенту).
-                'requires_blocks' => true,
             ],
             [
                 'name' => 'SiteOrigin Page Builder',
@@ -3631,12 +3595,6 @@ final class Detector
                 }
             }
 
-            // Додаткова умова для Gutenberg: наявність плагіна/тіла без блоків
-            // не рахуємо — інакше помилково спрацьовуємо на адмінці чи ліниво завантажених сайтах.
-            if (!empty($builder['requires_blocks']) && $method === 'plugin' && !$hasGutenbergBlocks) {
-                $method = null;
-            }
-
             if ($method !== null) {
                 $detected[] = [
                     'name' => $builder['name'],
@@ -3644,31 +3602,6 @@ final class Detector
                     'site' => $builder['site'],
                     'detection' => $method,
                 ];
-            }
-        }
-
-        // Fallback: якщо WordPress є, але жоден конструктор не виявлено і не активовано Classic Editor,
-        // вважаємо що використовується стандартний Gutenberg (з WP 5.0+ він у ядрі).
-        if (empty($detected)) {
-            $hasClassic = false;
-            foreach (['classic-editor', 'disable-gutenberg', 'disable-block-editor'] as $classicSlug) {
-                if (in_array($classicSlug, $pluginSlugs, true)) {
-                    $hasClassic = true;
-                    break;
-                }
-            }
-            if (!$hasClassic) {
-                // Додатково перевіряємо, що HTML взагалі виглядає як WordPress (вже гарантовано, т.к. викликається лише для WP)
-                // або що core-блок стилі присутні — але для надійності додаємо дефолтний Gutenberg
-                // якщо hasGutenbergBlocks true або навіть якщо ні — для сучасних WP це дефолт.
-                if ($hasGutenbergBlocks || stripos($lowerHtml, 'wp-content') !== false) {
-                    $detected[] = [
-                        'name' => 'Gutenberg (Block Editor)',
-                        'description' => 'Стандартний блоковий редактор WordPress (з версії 5.0).',
-                        'site' => 'https://wordpress.org/gutenberg',
-                        'detection' => $hasGutenbergBlocks ? 'html' : 'core',
-                    ];
-                }
             }
         }
 

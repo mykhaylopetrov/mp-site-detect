@@ -98,8 +98,10 @@ final class Cache
      * - 28: `sections.pagespeed` — дві стратегії поруч (`mobile` + `desktop`,
      *       паралельні запити через curl_multi), структура
      *       `{tested_url, fetch_time, mobile:{...}, desktop:{...}, key_fallback}`.
+     * - 29: з `page_builders` прибрано Gutenberg (Block Editor) — він у ядрі
+     *       WP за замовчуванням і створював шум поруч з Elementor.
      */
-    public const SCHEMA_VERSION = 28;
+    public const SCHEMA_VERSION = 29;
 
     private string $dir;
     private int $ttl;
