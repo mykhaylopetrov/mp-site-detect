@@ -92,8 +92,14 @@ final class Cache
      * - 26: деталі Drupal в картці CMS (sections.cms[].drupal) — версія
      *       (CHANGELOG/generator/X-Generator), тема (.info.yml), модулі за
      *       asset-шляхами (ядро відфільтровано), вхід /user/login.
+     * - 27: додано секцію `sections.pagespeed` — покази Google PageSpeed
+     *       Insights (Lighthouse mobile: бали performance/accessibility/
+     *       best-practices/seo + метрики FCP/LCP/TBT/CLS/SI/TTI + CrUX field).
+     * - 28: `sections.pagespeed` — дві стратегії поруч (`mobile` + `desktop`,
+     *       паралельні запити через curl_multi), структура
+     *       `{tested_url, fetch_time, mobile:{...}, desktop:{...}, key_fallback}`.
      */
-    public const SCHEMA_VERSION = 26;
+    public const SCHEMA_VERSION = 28;
 
     private string $dir;
     private int $ttl;

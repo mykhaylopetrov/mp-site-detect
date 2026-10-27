@@ -60,8 +60,11 @@ final class Detector
 
     /**
      * Виконати повний аналіз сайту.
+     *
+     * @param string[] $only виконати лише ці секції (порожньо = всі)
+     * @param string[] $skip пропустити ці секції
      */
-    public function analyze(): array
+    public function analyze(array $only = [], array $skip = []): array
     {
         $result = [
             'input' => $this->input,
@@ -79,7 +82,7 @@ final class Detector
             } else {
                 $result['sections'][$section] = $data;
             }
-        });
+        }, $only, $skip);
 
         return $result;
     }
@@ -90,8 +93,10 @@ final class Detector
      * Дозволяє реалізувати потокову (SSE) віддачу результатів у реальному часі.
      *
      * @param callable(string, mixed): void $emit
+     * @param string[] $only виконати лише ці секції (порожньо = всі)
+     * @param string[] $skip пропустити ці секції
      */
-    public function analyzeWithCallback(callable $emit): array
+    public function analyzeWithCallback(callable $emit, array $only = [], array $skip = []): array
     {
         $result = [
             'input' => $this->input,
@@ -110,7 +115,7 @@ final class Detector
                 $result['sections'][$section] = $data;
             }
             $emit($section, $data);
-        });
+        }, $only, $skip);
 
         $emit('complete', $result);
         return $result;
@@ -122,36 +127,57 @@ final class Detector
      * Назва секції 'meta' використовується для базової інформації (domain, ip, url, checked_at).
      *
      * @param callable(string, mixed): void $onSection
+     * @param string[] $only виконати лише ці секції (порожньо = всі) — дозволяє
+     *               винести повільні блоки (PageSpeed) в окремий паралельний стрім
+     * @param string[] $skip пропустити ці секції без виконання їхньої роботи
      */
-    private function runAnalysis(callable $onSection): void
+    private function runAnalysis(callable $onSection, array $only = [], array $skip = []): void
     {
-        $ip = $this->resolveIp($this->domain);
+        $want = static function (string $section) use ($only, $skip): bool {
+            if (!empty($only) && !in_array($section, $only, true)) {
+                return false;
+            }
+            return !in_array($section, $skip, true);
+        };
 
-        $onSection('meta', [
-            'domain' => $this->domain,
-            'url' => $this->url,
-            'ip' => $ip,
-            'checked_at' => date('c'),
-        ]);
+        $ip = ($want('meta') || $want('location') || $want('hosting'))
+            ? $this->resolveIp($this->domain)
+            : null;
 
-        if ($ip !== null) {
+        if ($want('meta')) {
+            $onSection('meta', [
+                'domain' => $this->domain,
+                'url' => $this->url,
+                'ip' => $ip,
+                'checked_at' => date('c'),
+            ]);
+        }
+
+        if ($ip !== null && ($want('location') || $want('hosting'))) {
             $geo = $this->lookupGeo($ip);
             if ($geo !== null) {
-                $onSection('location', $geo['location']);
-                $onSection('hosting', $geo['hosting']);
+                if ($want('location')) {
+                    $onSection('location', $geo['location']);
+                }
+                if ($want('hosting')) {
+                    $onSection('hosting', $geo['hosting']);
+                }
             }
         }
 
-        $whois = $this->lookupWhois($this->domain);
-        if ($whois !== null) {
-            $onSection('whois', $whois);
+        if ($want('whois')) {
+            $whois = $this->lookupWhois($this->domain);
+            if ($whois !== null) {
+                $onSection('whois', $whois);
+            }
         }
 
-        $html = $this->fetchHtml();
+        $needHtml = $want('cms') || $want('frameworks') || $want('server');
+        $html = $needHtml ? $this->fetchHtml() : null;
         $cms = [];
         $frameworks = [];
         $serverInfo = null;
-        if ($html !== null) {
+        if ($needHtml && $html !== null) {
             $generator = $this->extractMeta($html, 'generator');
             $cms = $this->detectCms($html, $generator);
             // Fallback: якщо HTML — сторінка-заглушка Hostia/bot challenge без wp-маркерів,
@@ -223,22 +249,28 @@ final class Detector
                         unset($item);
                     }
                 }
-                $onSection('cms', $cms);
+                if ($want('cms')) {
+                    $onSection('cms', $cms);
+                }
             }
 
-            $frameworks = $this->detectFrameworks($html, $this->httpHeaders);
-            if (!empty($frameworks)) {
-                $onSection('frameworks', $frameworks);
+            if ($want('frameworks')) {
+                $frameworks = $this->detectFrameworks($html, $this->httpHeaders);
+                if (!empty($frameworks)) {
+                    $onSection('frameworks', $frameworks);
+                }
             }
 
-            $serverInfo = $this->detectWebServer($this->httpHeaders, $cms, $frameworks);
-            $cdn = $this->detectCdn($this->httpHeaders, $html);
-            $dbInfo = $this->detectDatabase($this->httpHeaders, $html, $cms, $frameworks, []);
-            $nodeInfo = $this->detectNodeJs($this->httpHeaders, $html);
-            $pythonInfo = $this->detectPython($this->httpHeaders, $html, $frameworks);
-            $unified = $this->buildUnifiedServer($serverInfo, $cdn, $dbInfo, $nodeInfo, $pythonInfo);
-            $onSection('server', $unified);
-        } else {
+            if ($want('server')) {
+                $serverInfo = $this->detectWebServer($this->httpHeaders, $cms, $frameworks);
+                $cdn = $this->detectCdn($this->httpHeaders, $html);
+                $dbInfo = $this->detectDatabase($this->httpHeaders, $html, $cms, $frameworks, []);
+                $nodeInfo = $this->detectNodeJs($this->httpHeaders, $html);
+                $pythonInfo = $this->detectPython($this->httpHeaders, $html, $frameworks);
+                $unified = $this->buildUnifiedServer($serverInfo, $cdn, $dbInfo, $nodeInfo, $pythonInfo);
+                $onSection('server', $unified);
+            }
+        } elseif ($needHtml) {
             // Навіть якщо HTML не завантажився, пробуємо визначити сервер за заголовками (можуть бути з редиректу)
             if (!empty($this->httpHeaders)) {
                 $serverInfo = $this->detectWebServer($this->httpHeaders, $cms, $frameworks);
@@ -250,8 +282,409 @@ final class Detector
             $nodeInfo = $this->detectNodeJs($this->httpHeaders, $html);
             $pythonInfo = $this->detectPython($this->httpHeaders, $html, $frameworks);
             $unified = $this->buildUnifiedServer($serverInfo, $cdn, $dbInfo, $nodeInfo, $pythonInfo);
-            $onSection('server', $unified);
+            if ($want('server')) {
+                $onSection('server', $unified);
+            }
         }
+
+        // PageSpeed Insights (Google) — окремий блок, виключно покази PSI.
+        // Повільний (Lighthouse 10–60 с на стратегію), тому фронтенд
+        // запитує його окремим паралельним стрімом (only=pagespeed).
+        if ($want('pagespeed')) {
+            $pagespeed = $this->detectPageSpeed();
+            if ($pagespeed !== null) {
+                $onSection('pagespeed', $pagespeed);
+            }
+        }
+    }
+
+    /**
+     * API-ключ Google PageSpeed Insights (опційно, але рекомендовано).
+     * Без ключа діє низька квота (~100 запитів/день з IP); з ключем — ~25 000/день безкоштовно.
+     * Задається через `config.php` (рекомендовано), env `PAGESPEED_API_KEY`
+     * або константу `PAGESPEED_API_KEY`.
+     * УВАГА: у Google Cloud Console для ключа має бути
+     * Application restrictions = None (запити йдуть із сервера без Referer —
+     * обмеження "Websites / HTTP referrers" дає помилку
+     * "Requests from referer <empty> are blocked").
+     */
+    private function getPageSpeedApiKey(): ?string
+    {
+        $env = getenv('PAGESPEED_API_KEY');
+        if (is_string($env) && trim($env) !== '') {
+            return trim($env);
+        }
+        if (!empty($_ENV['PAGESPEED_API_KEY']) && is_string($_ENV['PAGESPEED_API_KEY'])) {
+            $v = trim($_ENV['PAGESPEED_API_KEY']);
+            if ($v !== '') {
+                return $v;
+            }
+        }
+        if (defined('PAGESPEED_API_KEY') && is_string(constant('PAGESPEED_API_KEY'))) {
+            $v = trim((string)constant('PAGESPEED_API_KEY'));
+            if ($v !== '') {
+                return $v;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Окремий блок PageSpeed — виключно покази Google PageSpeed Insights (Lighthouse).
+     * Повертає дві стратегії поруч для порівняння: `mobile` та `desktop`.
+     * Кожна: бали категорій (0–100), ключові метрики lab (FCP/LCP/TBT/CLS/SI/TTI)
+     * та поле field (CrUX, якщо є). При помилці стратегії — її масив містить
+     * `error`, щоб картка показала причину замість зникнення.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function detectPageSpeed(): ?array
+    {
+        $target = $this->url !== '' ? $this->url : 'https://' . $this->domain . '/';
+        $key = $this->getPageSpeedApiKey();
+
+        $urls = [
+            'mobile' => $this->buildPageSpeedApiUrl($target, 'mobile', $key),
+            'desktop' => $this->buildPageSpeedApiUrl($target, 'desktop', $key),
+        ];
+        $fetched = $this->fetchPageSpeedMulti($urls, 70);
+
+        // Ключ із обмеженням "Websites / HTTP referrers" серверні запити
+        // (без Referer) відхиляються: "Requests from referer <empty> are blocked".
+        // Заблоковані стратегії пробуємо ще раз БЕЗ ключа (низька квота, але блок покаже дані).
+        $usedFallback = false;
+        if ($key !== null) {
+            foreach (['mobile', 'desktop'] as $strategy) {
+                $one = $fetched[$strategy] ?? null;
+                if ($one !== null && $this->isKeyBlockedResponse($one[0], $one[1])) {
+                    $retry = $this->fetchPageSpeedBody(
+                        $this->buildPageSpeedApiUrl($target, $strategy, null),
+                        70
+                    );
+                    if ($retry !== null) {
+                        $fetched[$strategy] = $retry;
+                        $usedFallback = true;
+                    }
+                }
+            }
+        }
+
+        $mobile = $this->parsePageSpeedResponse($target, 'mobile', $fetched['mobile'] ?? null, $key, $usedFallback);
+        $desktop = $this->parsePageSpeedResponse($target, 'desktop', $fetched['desktop'] ?? null, $key, $usedFallback);
+
+        $fetchTime = $mobile['fetch_time'] ?? null;
+        if ($fetchTime === null) {
+            $fetchTime = $desktop['fetch_time'] ?? null;
+        }
+
+        return [
+            'tested_url' => $mobile['tested_url'] ?? $desktop['tested_url'] ?? $target,
+            'fetch_time' => $fetchTime,
+            'mobile' => $mobile,
+            'desktop' => $desktop,
+            'key_fallback' => $usedFallback,
+        ];
+    }
+
+    private function buildPageSpeedApiUrl(string $target, string $strategy, ?string $key): string
+    {
+        $api = 'https://www.googleapis.com/pagespeedonline/v5/runPagespeed'
+            . '?url=' . urlencode($target)
+            . '&strategy=' . urlencode($strategy)
+            . '&category=performance'
+            . '&category=accessibility'
+            . '&category=best-practices'
+            . '&category=seo';
+        if ($key !== null && $key !== '') {
+            $api .= '&key=' . urlencode($key);
+        }
+        return $api;
+    }
+
+    /**
+     * Чи відповідь PSI означає заблокований ключ (referer-обмеження тощо).
+     */
+    private function isKeyBlockedResponse(int $httpCode, string $body): bool
+    {
+        if ($httpCode !== 400 && $httpCode !== 403) {
+            return false;
+        }
+        $data = json_decode($body, true);
+        $msg = is_array($data) ? (string)($data['error']['message'] ?? '') : '';
+        $reason = is_array($data)
+            ? (string)(($data['error']['errors'][0]['reason'] ?? '') . ' ' . ($data['error']['status'] ?? ''))
+            : '';
+        $hay = strtolower($msg . ' ' . $reason);
+        return str_contains($hay, 'referer')
+            || str_contains($hay, 'blocked')
+            || str_contains($hay, 'keyinvalid')
+            || str_contains($hay, 'api_key_http_referrer_blocked')
+            || str_contains($hay, 'permission_denied');
+    }
+
+    /**
+     * Розбір однієї відповіді PSI у структуру стратегії.
+     *
+     * @param array{0: int, 1: string}|null $fetched
+     * @return array<string, mixed>
+     */
+    private function parsePageSpeedResponse(string $target, string $strategy, ?array $fetched, ?string $key, bool $usedFallback): array
+    {
+        if ($fetched === null) {
+            return [
+                'strategy' => $strategy,
+                'tested_url' => $target,
+                'error' => 'PageSpeed API не відповіла (таймаут 70 с). Спробуйте оновити пізніше.',
+            ];
+        }
+        [$httpCode, $body] = $fetched;
+        $data = json_decode((string)$body, true);
+        if (!is_array($data)) {
+            return [
+                'strategy' => $strategy,
+                'tested_url' => $target,
+                'error' => 'PageSpeed API повернула некоректну відповідь (HTTP ' . $httpCode . ').',
+            ];
+        }
+
+        if ($httpCode < 200 || $httpCode >= 300) {
+            $msg = $data['error']['message'] ?? ('HTTP ' . $httpCode);
+            // Дружні тексти для типових помилок квоти/аналізу
+            if (str_contains(strtolower((string)$msg), 'quota') || $httpCode === 429) {
+                if ($usedFallback) {
+                    $msg = 'Ключ PageSpeed API заблоковано за referer, а безключова квота сервера вичерпана. '
+                        . 'У Google Cloud Console → Credentials → ваш ключ встановіть Application restrictions = None '
+                        . '(API restrictions = PageSpeed Insights API), зачекайте 1–2 хв і оновіть.';
+                } elseif ($key !== null) {
+                    $msg = 'Перевищено квоту ключа PageSpeed API. Спробуйте пізніше.';
+                } else {
+                    $msg = 'Перевищено безключову квоту PageSpeed API. Додайте ключ PAGESPEED_API_KEY (config.php) або спробуйте пізніше.';
+                }
+            } elseif (str_contains(strtolower((string)$msg), 'referer')
+                || str_contains(strtolower((string)$msg), 'blocked')
+            ) {
+                $msg = 'Ключ PageSpeed API обмежено HTTP-referrer’ами, а серверні запити йдуть без Referer. '
+                    . 'У Google Cloud Console → Credentials → ваш ключ встановіть Application restrictions = None '
+                    . '(API restrictions = PageSpeed Insights API). Оригінал: ' . $msg;
+            } elseif (str_contains(strtolower((string)$msg), 'lighthouse')) {
+                $msg = 'Lighthouse не зміг проаналізувати сторінку: ' . $msg;
+            }
+            return [
+                'strategy' => $strategy,
+                'tested_url' => $target,
+                'error' => $msg,
+            ];
+        }
+
+        $lh = $data['lighthouseResult'] ?? [];
+        $cats = $lh['categories'] ?? [];
+        $audits = $lh['audits'] ?? [];
+        $loadingExp = $data['loadingExperience'] ?? null;
+
+        $score = static function (array $cats, string $id): ?int {
+            $s = $cats[$id]['score'] ?? null;
+            return is_numeric($s) ? (int)round((float)$s * 100) : null;
+        };
+
+        $metric = static function (array $audits, string $id): ?array {
+            $a = $audits[$id] ?? null;
+            if (!is_array($a)) {
+                return null;
+            }
+            $num = $a['numericValue'] ?? null;
+            $display = $a['displayValue'] ?? null;
+            if ($num === null && $display === null) {
+                return null;
+            }
+            return [
+                'value' => is_numeric($num) ? (float)$num : null,
+                'display' => is_string($display) ? $display : null,
+            ];
+        };
+
+        $fieldMetrics = null;
+        $fieldCategory = null;
+        if (is_array($loadingExp)) {
+            $fieldCategory = $loadingExp['overall_category'] ?? null;
+            $m = $loadingExp['metrics'] ?? [];
+            $pick = static function (array $m, string $id): ?array {
+                $e = $m[$id] ?? null;
+                if (!is_array($e)) {
+                    return null;
+                }
+                return [
+                    'percentile' => $e['percentile'] ?? null,
+                    'category' => $e['category'] ?? null,
+                ];
+            };
+            $fieldMetrics = [
+                'FCP' => $pick($m, 'FIRST_CONTENTFUL_PAINT_MS'),
+                'LCP' => $pick($m, 'LARGEST_CONTENTFUL_PAINT_MS'),
+                'CLS' => $pick($m, 'CUMULATIVE_LAYOUT_SHIFT_SCORE'),
+                'INP' => $pick($m, 'INTERACTION_TO_NEXT_PAINT'),
+            ];
+            $fieldMetrics = array_filter($fieldMetrics, static fn($v) => $v !== null);
+            if (empty($fieldMetrics)) {
+                $fieldMetrics = null;
+            }
+        }
+
+        $result = [
+            'strategy' => $strategy,
+            'tested_url' => $lh['finalUrl'] ?? $target,
+            'fetch_time' => $data['analysisUTCTimestamp'] ?? ($lh['fetchTime'] ?? null),
+            'performance' => $score($cats, 'performance'),
+            'accessibility' => $score($cats, 'accessibility'),
+            'best_practices' => $score($cats, 'best-practices'),
+            'seo' => $score($cats, 'seo'),
+            'metrics' => array_filter([
+                'FCP' => $metric($audits, 'first-contentful-paint'),
+                'LCP' => $metric($audits, 'largest-contentful-paint'),
+                'TBT' => $metric($audits, 'total-blocking-time'),
+                'CLS' => $metric($audits, 'cumulative-layout-shift'),
+                'SI' => $metric($audits, 'speed-index'),
+                'TTI' => $metric($audits, 'interactive'),
+            ], static fn($v) => $v !== null),
+            'field_category' => $fieldCategory,
+            'field_metrics' => $fieldMetrics,
+        ];
+
+        // Якщо жодного бала немає — вважаємо відповідь порожньою
+        if ($result['performance'] === null && $result['accessibility'] === null
+            && $result['seo'] === null && empty($result['metrics'])) {
+            return [
+                'strategy' => $strategy,
+                'tested_url' => $target,
+                'error' => 'PageSpeed API повернула порожній результат для цієї сторінки.',
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Паралельні запити до PageSpeed API (mobile + desktop одночасно через curl_multi).
+     * Без cURL — послідовно через fetchPageSpeedBody.
+     *
+     * @param array<string, string> $urls ['mobile' => url, 'desktop' => url]
+     * @return array<string, array{0: int, 1: string}|null>
+     */
+    private function fetchPageSpeedMulti(array $urls, int $timeout = 70): array
+    {
+        $out = ['mobile' => null, 'desktop' => null];
+        if (!function_exists('curl_multi_init')) {
+            foreach ($urls as $strategy => $url) {
+                $out[$strategy] = $this->fetchPageSpeedBody($url, $timeout);
+            }
+            return $out;
+        }
+
+        $mh = curl_multi_init();
+        $handles = [];
+        foreach ($urls as $strategy => $url) {
+            $ch = curl_init($url);
+            if ($ch === false) {
+                continue;
+            }
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_HEADER => false,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_MAXREDIRS => 3,
+                CURLOPT_TIMEOUT => $timeout,
+                CURLOPT_CONNECTTIMEOUT => 10,
+                CURLOPT_SSL_VERIFYPEER => true,
+                CURLOPT_USERAGENT => 'MP-Site-Detect/pagespeed',
+                CURLOPT_ENCODING => '',
+            ]);
+            curl_multi_add_handle($mh, $ch);
+            $handles[$strategy] = $ch;
+        }
+
+        if (empty($handles)) {
+            curl_multi_close($mh);
+            return $out;
+        }
+
+        $running = null;
+        do {
+            $status = curl_multi_exec($mh, $running);
+            if ($running > 0) {
+                curl_multi_select($mh, 1.0);
+            }
+        } while ($running > 0 && $status === CURLM_OK);
+
+        foreach ($handles as $strategy => $ch) {
+            $body = curl_multi_getcontent($ch);
+            $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_multi_remove_handle($mh, $ch);
+            if (PHP_VERSION_ID < 80000) {
+                curl_close($ch);
+            }
+            $out[$strategy] = ($body === false || $body === '') ? null : [$code, (string)$body];
+        }
+        curl_multi_close($mh);
+        return $out;
+    }
+
+    /**
+     * HTTP-запит до PageSpeed API з подовженим таймаутом (Lighthouse думає 10–60 с).
+     *
+     * @return array{0: int, 1: string}|null [http_code, body]
+     */
+    private function fetchPageSpeedBody(string $apiUrl, int $timeout = 70): ?array
+    {
+        if (function_exists('curl_init')) {
+            $ch = curl_init($apiUrl);
+            if ($ch === false) {
+                return null;
+            }
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_HEADER => false,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_MAXREDIRS => 3,
+                CURLOPT_TIMEOUT => $timeout,
+                CURLOPT_CONNECTTIMEOUT => 10,
+                CURLOPT_SSL_VERIFYPEER => true,
+                CURLOPT_USERAGENT => 'MP-Site-Detect/pagespeed',
+                CURLOPT_ENCODING => '',
+            ]);
+            $body = curl_exec($ch);
+            $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            if (PHP_VERSION_ID < 80000) {
+                curl_close($ch);
+            }
+            if ($body === false || $body === '') {
+                return null;
+            }
+            return [$code, (string)$body];
+        }
+
+        $ctx = stream_context_create([
+            'http' => [
+                'method' => 'GET',
+                'timeout' => $timeout,
+                'header' => "User-Agent: MP-Site-Detect/pagespeed\r\nAccept: application/json\r\n",
+                'ignore_errors' => true,
+            ],
+            'ssl' => [
+                'verify_peer' => true,
+                'verify_peer_name' => true,
+            ],
+        ]);
+        $body = @file_get_contents($apiUrl, false, $ctx);
+        if ($body === false || $body === '') {
+            return null;
+        }
+        $code = 200;
+        $headers = $this->captureHeaders();
+        foreach ($headers as $h) {
+            if (preg_match('~^HTTP/\S+\s+(\d{3})~i', $h, $m)) {
+                $code = (int)$m[1];
+            }
+        }
+        return [$code, (string)$body];
     }
 
     /**

@@ -14,7 +14,7 @@ $csrfToken = $spamProtection->generateToken();
     <meta name="csrf-token" content="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
     <title>MP Site Detect — аналіз сайту | thePetrov.com</title>
     <link rel="preconnect" href="https://cdnjs.cloudflare.com">
-    <link rel="stylesheet" href="assets/css/style.css?v=16">
+    <link rel="stylesheet" href="assets/css/style.css?v=18">
     <link rel="icon" href="assets/img/logo-512x512.png">
 </head>
 <body class="page">
@@ -74,11 +74,6 @@ $csrfToken = $spamProtection->generateToken();
                     <input type="hidden" name="js_token" id="js_token" value="">
                     <input type="hidden" name="form_loaded_at" id="form_loaded_at" value="<?= (int)(microtime(true) * 1000) ?>">
                 </form>
-
-                <div class="status status--loading" id="status-loading" hidden>
-                    <div class="status__spinner" aria-hidden="true"></div>
-                    <p class="status__text">Здійснюється аналіз сайту…</p>
-                </div>
 
                 <div class="status status--error" id="status-error" hidden role="alert">
                     <p class="status__text" id="status-error-text"></p>
@@ -150,6 +145,10 @@ $csrfToken = $spamProtection->generateToken();
                                 <span class="progress__indicator" aria-hidden="true"></span>
                                 <span class="progress__label">Веб-сервер</span>
                             </li>
+                            <li class="progress__item" data-step="pagespeed">
+                                <span class="progress__indicator" aria-hidden="true"></span>
+                                <span class="progress__label">PageSpeed</span>
+                            </li>
                         </ol>
                     </section>
 
@@ -194,6 +193,11 @@ $csrfToken = $spamProtection->generateToken();
                         <h3 class="features__heading">Веб-сервер</h3>
                         <p class="features__text">Сервер, Node.js, PHP, Python, CDN та база даних — однією карткою.</p>
                     </li>
+                    <li class="features__item">
+                        <span class="features__icon" aria-hidden="true">⚡</span>
+                        <h3 class="features__heading">PageSpeed</h3>
+                        <p class="features__text">Бали Google PageSpeed Insights (mobile) та метрики LCP, CLS, TBT.</p>
+                    </li>
                 </ul>
             </div>
         </section>
@@ -207,6 +211,6 @@ $csrfToken = $spamProtection->generateToken();
     </footer>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
-    <script src="assets/js/app.js?v=16" defer></script>
+    <script src="assets/js/app.js?v=18" defer></script>
 </body>
 </html>

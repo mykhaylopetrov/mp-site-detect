@@ -1,8 +1,9 @@
 # MP Site Detect
 
 Веб-сервіс аналізу сайтів: визначає IP-адресу, місцезнаходження, хостинг-провайдера,
-WHOIS-дані домену, використану CMS (з деталями WordPress всередині), фреймворки та
-уніфіковану секцію Веб-сервер (сервер, Node.js, PHP, Python, CDN, база даних).
+WHOIS-дані домену, використану CMS (з деталями WordPress всередині), фреймворки,
+уніфіковану секцію Веб-сервер (сервер, Node.js, PHP, Python, CDN, база даних)
+та покази Google PageSpeed Insights (Lighthouse mobile + desktop).
 
 ## Стек
 
@@ -27,11 +28,12 @@ WHOIS-дані домену, використану CMS (з деталями Wor
    - Python (якщо присутній — версія з `Server: gunicorn/uvicorn` / `X-Powered-By: Python` або інференс за Django/Flask);
    - CDN (якщо присутній — назва провайдера: Cloudflare, Amazon CloudFront, Fastly, Akamai, QUIC.cloud, BunnyCDN, KeyCDN, Sucuri, StackPath, Imperva, Varnish);
    - база даних (назва СУБД — MySQL / MariaDB / PostgreSQL / SQLite / Progress / MSSQL / Oracle — та версія, якщо сайт її точно розкриває через відкритий `phpinfo`, заголовки `X-DB-*` або витік SQL-помилки).
-7. ⚡ **Потокова видача результатів** — кожен модуль з'являється у мірі готовності
-8. 💾 **Локальний кеш** — повторні запити того самого домену миттєві, без навантаження
+7. ⚡ **PageSpeed** — виключно покази Google PageSpeed Insights (Lighthouse): дві стратегії поруч — **Mobile** і **Desktop** — для зручного порівняння: бали Performance / Accessibility / Best Practices / SEO (0–100) та метрики FCP, LCP, TBT, CLS, Speed Index, TTI + польові дані CrUX (якщо є).
+8. 📡 **Потокова видача результатів** — кожен модуль з'являється у мірі готовності
+9. 💾 **Локальний кеш** — повторні запити того самого домену миттєві, без навантаження
    на сторонні API та WHOIS-сервери
-9. 🛡️ **Захист від СПАМу та ботів** — багаторівневий фільтр без зовнішніх залежностей
-   (CSRF-токени, honeypot-поле, JS-маркер, перевірка часу взаємодії, rate-limit)
+10. 🛡️ **Захист від СПАМу та ботів** — багаторівневий фільтр без зовнішніх залежностей
+    (CSRF-токени, honeypot-поле, JS-маркер, перевірка часу взаємодії, rate-limit)
 
 > Секції **«Загальні дані сайту»** (title/description/generator) та **«Технології та бібліотеки»** (jQuery, Bootstrap тощо) прибрано для скорочення шуму. Секції **«CDN»** та **«База даних»** також прибрано як окремі картки — їх дані тепер входять до єдиної секції **Веб-сервер**.
 
@@ -328,23 +330,82 @@ WHOIS-дані домену, використану CMS (з деталями Wor
 
 У фронтенді ця секція має клас `card--full` (на всю ширину) та в PDF йде однією секцією «Веб-сервер».
 
+## Можливості PageSpeed-блоку (виключно Google PSI)
+
+Окрема картка **PageSpeed** (`sections.pagespeed`) — це прямі покази
+Google PageSpeed Insights API v5 (Lighthouse), дві стратегії поруч
+для порівняння: `mobile` та `desktop` (паралельні запити через curl_multi):
+
+- **Бали категорій (0–100):** Performance, Accessibility, Best Practices, SEO.
+- **Lab-метрики Lighthouse:** FCP, LCP, TBT, CLS, Speed Index, TTI
+  (значення `displayValue` + числове `numericValue`).
+- **Польові дані CrUX** (`loadingExperience`): загальна категорія
+  (`FAST` / `AVERAGE` / `SLOW`) та перцентилі FCP/LCP/CLS/INP, якщо Google
+  має реальні дані для цього URL.
+- При помилці (квота, таймаут, Lighthouse не зміг відрендерити сторінку)
+  картка не зникає, а показує текст помилки та протестований URL.
+
+**API-ключ (рекомендовано, безкоштовно):**
+
+- Без ключа API працює, але з низькою квотою (~100 запитів/день з IP).
+- З безкоштовним ключем — ~25 000 запитів/день, картка не потрібна.
+  Створення: Google Cloud Console → увімкнути `PageSpeed Insights API` →
+  Credentials → API key (обмежити тільки цим API).
+- ВАЖЛИВО: для ключа встановіть **Application restrictions = None**.
+  Запити йдуть із PHP-сервера без `Referer`, тому обмеження
+  «Websites / HTTP referrers» дає помилку
+  `Requests from referer <empty> are blocked`. Обмежуйте ключ лише через
+  **API restrictions = PageSpeed Insights API**.
+  Якщо ключ заблоковано за referer — бекенд автоматично повторить запит
+  без ключа (з позначкою в картці) замість порожньої помилки.
+- Ключ задається одним із способів (перший знайдений перемагає):
+  `config.php` (рекомендовано: скопіювати `config.example.php` у `config.php`,
+  файл у `.gitignore`), далі env `PAGESPEED_API_KEY`, `$_ENV['PAGESPEED_API_KEY']`
+  або PHP-константа `PAGESPEED_API_KEY`.
+
+**Структура секції (`sections.pagespeed`):**
+
+| Поле | Опис |
+|------|------|
+| `tested_url` | протестований URL (фінальний після редиректів) |
+| `fetch_time` | час аналізу PSI |
+| `mobile` / `desktop` | підсекція стратегії: `strategy`, бали `performance` / `accessibility` / `best_practices` / `seo` (0–100), `metrics` (FCP/LCP/TBT/CLS/SI/TTI з `display`+`value`), `field_category` / `field_metrics` (CrUX) або `error` з причиною |
+| `key_fallback` | `true` якщо ключ було відхилено за referer і запит повторено без ключа |
+
+**Особливості:**
+
+- Обидві стратегії запитуються паралельно (один час очікування замість
+  подвоєного, curl_multi; без cURL — послідовно); таймаут кожного запиту — 70 с.
+  Якщо одна стратегія впала з помилкою, а інша успішна — картка покаже
+  обидві (помилку inline).
+- У `runAnalysis()` PageSpeed виконується лише коли його запитано
+  (`only=pagespeed` — тоді DNS/WHOIS/HTML-запити взагалі не виконуються).
+  Фронтенд відкриває PSI окремим паралельним стрімом, тож повільний Lighthouse
+  (10–60 с на стратегію) не затримує швидкі блоки.
+- SSE-подія `pagespeed` надсилається своїм стрімом; порядок секцій основного
+  стріму: `location → hosting → whois → cms → frameworks → server`.
+- Кеш інвалідується: `Cache::SCHEMA_VERSION = 28`.
+
 ## Структура
 
 ```
 mp-site-detect/
 ├── index.php              # Головна сторінка з формою та чеклістом прогресу
+├── config.example.php     # Шаблон локальних налаштувань (комітити)
+├── config.php             # Локальні секрети (PAGESPEED_API_KEY) — у .gitignore, НЕ комітити
+├── .gitignore             # Ігнорує config.php та вміст cache/
 ├── api/
 │   ├── check.php          # REST-точка повного аналізу (JSON, для зовнішніх клієнтів)
-│   └── stream.php         # SSE-ендпоінт для потокової видачі результатів
+│   └── stream.php         # SSE-ендпоінт для потокової видачі результатів (only/skip)
 ├── src/
-│   ├── Detector.php       # Клас виявлення технологій (підтримує callback-режим)
+│   ├── Detector.php       # Клас виявлення технологій (callback-режим, фільтр only/skip)
 │   ├── Cache.php          # Файловий кеш результатів з версіонуванням схеми
 │   └── SpamProtection.php # CSRF-токени, honeypot, JS-маркер, rate-limit
 ├── assets/
 │   ├── css/
 │   │   └── style.css      # Стилі (BEM)
 │   ├── js/
-│   │   └── app.js         # Логіка форми, EventSource-стрім, рендер, PDF
+│   │   └── app.js         # Форма, два паралельні EventSource-стріми, рендер, PDF
 │   └── fonts/             # Шрифти PTSans для кириличного PDF
 ├── cache/                 # Директорія кешу (створиться автоматично, закрита .htaccess)
 │   ├── .htaccess          # Забороняє прямий HTTP-доступ
@@ -363,7 +424,12 @@ mp-site-detect/
    Зазвичай це `www-data` (Linux) або `IUSR` / `Everyone` (Windows). Під час
    першого запиту автоматично створюється підкаталог `cache/security/` для
    службових даних захисту від ботів (токени, rate-limit, секрет HMAC).
-5. Відкрийте `http://your-host/mp-site-detect/` у браузері.
+5. (Рекомендовано) Скопіюйте `config.example.php` у `config.php` і впишіть
+   безкоштовний ключ Google PageSpeed Insights API (`PAGESPEED_API_KEY`) —
+   без нього блок PageSpeed працює на низькій безключовій квоті.
+   Файл `config.php` вже у `.gitignore` і ніколи не комітиться
+   (див. «[Можливості PageSpeed-блоку](#можливості-pagespeed-блоку-виключно-google-psi)»).
+6. Відкрийте `http://your-host/mp-site-detect/` у браузері.
    У вашому браузері **має бути ввімкнений JavaScript** — інакше форма
    відхилить запит (див. «[Захист від СПАМу та ботів](#захист-від-спаму-та-ботів)»).
 
@@ -393,7 +459,9 @@ mp-site-detect/
    (щойно / N хв тому / N год тому / N д тому).
 5. Кнопка **«Оновити»** біля PDF дозволяє примусово ігнорувати кеш
    та виконати свіжий аналіз.
-6. Після завершення аналізу активується кнопка **«Завантажити PDF»**.
+6. Після завершення основного аналізу активується кнопка **«Завантажити PDF»**.
+   Картка PageSpeed може довантажитись пізніше — якщо вона вже на екрані,
+   PDF включатиме і її.
 
 ## Як це працює
 
@@ -414,13 +482,27 @@ mp-site-detect/
 | `cms`       | після детекції CMS (з вбудованими WordPress-деталями, якщо є) |
 | `frameworks`| після аналізу HTML та заголовків               |
 | `server`    | після розбору HTTP-заголовків — єдина секція Веб-сервер (веб-сервер + Node.js/PHP/Python + CDN + база даних) |
-| `complete`  | фінальна подія з повним результатом            |
-| `error`     | у разі помилки                                 |
+| `pagespeed` | окремим паралельним стрімом — покази Google PSI (Lighthouse mobile+desktop), 10–120 с |
+| `complete`  | фінальна подія з повним результатом (у кожному стрімі своя) |
+| `error`     | у разі помилки (помилка PageSpeed-стріму показується в його картці, а не банером) |
 
-На фронтенді (`assets/js/app.js`) слухач `EventSource` на кожну подію
-оновлює відповідну картку та відмічає крок у чеклісті. Таким чином користувач
-бачить перші результати за 1–2 секунди (IP, локація, хостинг), не чекаючи
-повного циклу аналізу, який може тривати 30–60 секунд.
+**Паралельні стріми.** Фронтенд відкриває одразу два `EventSource`:
+основний (`skip=pagespeed` — швидкі блоки: IP, локація, хостинг, WHOIS, CMS,
+фреймворки, сервер) і PageSpeed (`only=pagespeed` — тільки Lighthouse).
+Швидкі картки з'являються за 1–2 с і не чекають повільного PSI.
+Параметри `only` / `skip` (comma-separated) підтримуються бекендом
+(`Detector::analyzeWithCallback($emit, $only, $skip)`): непотрібні секції
+навіть не виконуються (без зайвих HTTP-запитів). PageSpeed-стрім кешується
+окремо (`<domain>.pagespeed`), тож паралельні записи не затирають одне одного.
+Без `only`/`skip` — колишня поведінка: все в одному стрімі.
+
+На фронтенді (`assets/js/app.js`) два слухачі `EventSource` (основний + PageSpeed)
+на кожну подію оновлюють відповідну картку та відмічають крок у чеклісті.
+Таким чином користувач бачить перші результати за 1–2 секунди
+(IP, локація, хостинг), не чекаючи повного циклу аналізу, а картка PageSpeed
+домалюється, щойно Lighthouse відповість. `complete` основного стріму не
+затирає вже отриманий PageSpeed (мердж), а `complete` PageSpeed-стріму
+не чіпає основний результат.
 
 Старий `POST api/check.php` залишено для зовнішніх клієнтів, яким потрібен
 єдиний JSON-відповідь замість потоку.
@@ -433,13 +515,16 @@ mp-site-detect/
 
 - Результат зберігається у файлі `cache/<sha256>.json`.
 - Ключ — SHA-256 від нормалізованого домену (без `www`, без scheme, без шляху).
+- PageSpeed-стрім (`only=pagespeed`) кешується окремо — `cache/<sha256>.json`
+  від ключа `<domain>.pagespeed`, тож паралельні стріми не затирають записи
+  одне одного, а повторний візит миттєво показує і PSI-блок.
 - TTL за замовчуванням — **24 години** (можна перевизначити параметром `ttl=`).
 - Домени `example.com`, `https://www.example.com/path` зводяться до одного ключа.
 - Директорія `cache/` захищена від прямого HTTP-доступу через `.htaccess`.
 - **Версіонування схеми** (`schema_version`): при несумісних змінах структури
   даних константа `Cache::SCHEMA_VERSION` інкрементується — старі записи
-  автоматично вважаються невалідними і перезаписуються. Поточна версія: **26**
-  (прибрано окремі `sections.site`, `sections.technologies`, `sections.wordpress` — тепер `sections.cms[].wordpress`; `sections.cdn`/`sections.db` об'єднано в `sections.server`; додано Node.js/Python у `sections.server`).
+  автоматично вважаються невалідними і перезаписуються. Поточна версія: **28**
+  (прибрано окремі `sections.site`, `sections.technologies`, `sections.wordpress` — тепер `sections.cms[].wordpress`; `sections.cdn`/`sections.db` об'єднано в `sections.server`; додано Node.js/Python у `sections.server`; додано `sections.pagespeed` — Google PSI mobile+desktop).
 
 **Алгоритм:**
 
@@ -457,6 +542,8 @@ mp-site-detect/
 | `url`    | URL або домен для аналізу (обов'язково)                               |
 | `force`  | `1` — ігнорувати кеш і виконати свіжий аналіз (опціонально)          |
 | `ttl`    | TTL кешу в секундах (опціонально, за замовчуванням `86400` = 24 год)  |
+| `only`   | виконати лише ці секції, напр. `only=pagespeed` (сторінка відкриває цей стрім паралельно) |
+| `skip`   | пропустити секції, напр. `skip=pagespeed` (основний стрім сторінки) |
 | `csrf_token` | захищений токен із форми (додається автоматично JS)              |
 | `hp`     | значення honeypot-поля (має бути порожнім)                           |
 | `js`     | 32-char hex-маркер виконання JS                                       |
@@ -505,6 +592,7 @@ $spam->resetRateLimit('203.0.113.42'); // зняти ліміт і бан для
 |--------|------------|
 | [ip-api.com](http://ip-api.com) | Геолокація та ISP за IP |
 | [who-dat.as93.net](https://who-dat.as93.net) | WHOIS-інформація про домен |
+| [PageSpeed Insights API](https://developers.google.com/speed/docs/insights/v5/get-started) | Покази Lighthouse (mobile + desktop), потрібен безкоштовний API-ключ для повної квоти |
 | [jsPDF](https://github.com/parallax/jsPDF) (CDN) | Генерація PDF |
 
 ## Запуск локально (Laragon)

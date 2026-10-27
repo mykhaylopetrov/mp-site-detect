@@ -5,3 +5,5 @@ cache/*
 !cache/security/
 cache/security/*
 !cache/security/.htaccess
+# Локальні налаштування з секретами (API-ключі) — ніколи не комітити
+config.php

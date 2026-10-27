@@ -425,26 +425,10 @@ body {
     to { opacity: 1; transform: translateY(0); }
 }
 
-.status--loading {
-    background: var(--color-primary-light);
-    color: var(--color-primary-hover);
-}
-
 .status--error {
     background: #fef2f2;
     color: var(--color-danger);
     border: 1px solid #fecaca;
-}
-
-.status__spinner {
-    width: 22px;
-    height: 22px;
-    border: 3px solid currentColor;
-    border-right-color: transparent;
-    border-radius: 50%;
-    animation: spin 800ms linear infinite;
-    opacity: 0.7;
-    flex-shrink: 0;
 }
 
 .status__text {
@@ -1125,6 +1109,72 @@ body {
     color: var(--color-text-muted);
     font-style: italic;
     font-size: var(--fs-sm);
+}
+
+/* PageSpeed scores (Google PSI, mobile + desktop) */
+.psi-cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-4);
+}
+
+.psi-panel__title {
+    font-size: var(--fs-base);
+    font-weight: 700;
+    color: var(--color-text);
+    margin-bottom: var(--space-3);
+}
+
+.psi-scores {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+}
+
+.psi-score {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: var(--space-3) var(--space-2);
+    border-radius: var(--radius-md);
+    border: 2px solid var(--color-border);
+    background: var(--color-surface-alt);
+}
+
+.psi-score__value {
+    font-size: var(--fs-2xl);
+    font-weight: 800;
+    line-height: 1;
+}
+
+.psi-score__label {
+    font-size: var(--fs-xs);
+    color: var(--color-text-muted);
+    font-weight: 600;
+    text-align: center;
+}
+
+.psi-score--good { border-color: var(--color-success); }
+.psi-score--good .psi-score__value { color: var(--color-success); }
+.psi-score--avg { border-color: var(--color-warning); }
+.psi-score--avg .psi-score__value { color: var(--color-warning); }
+.psi-score--bad { border-color: var(--color-danger); }
+.psi-score--bad .psi-score__value { color: var(--color-danger); }
+.psi-score--na .psi-score__value { color: var(--color-text-light); }
+
+.psi-metrics {
+    margin-bottom: var(--space-2);
+}
+
+@media (max-width: 640px) {
+    .psi-scores {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .psi-cols {
+        grid-template-columns: 1fr;
+    }
 }
 
 /* List of detected items (CMS, frameworks, tech) */

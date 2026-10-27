@@ -12,7 +12,6 @@
     const form = document.getElementById('check-form');
     const input = document.getElementById('url-input');
     const btn = document.getElementById('check-btn');
-    const statusLoading = document.getElementById('status-loading');
     const statusError = document.getElementById('status-error');
     const statusErrorText = document.getElementById('status-error-text');
     const results = document.getElementById('results');
@@ -55,6 +54,7 @@
     let lastResult = null;
     let lastUrl = null;
     let eventSource = null;
+    let psiSource = null;
     let fromCache = false;
 
     /* ------------------------- Helpers ------------------------------ */
@@ -145,19 +145,16 @@
         if (on) {
             btn.classList.add('form__button--loading');
             btn.disabled = true;
-            statusLoading.hidden = false;
             statusError.hidden = true;
         } else {
             btn.classList.remove('form__button--loading');
             btn.disabled = false;
-            statusLoading.hidden = true;
         }
     };
 
     const showError = (message) => {
         statusErrorText.textContent = message;
         statusError.hidden = false;
-        statusLoading.hidden = true;
         results.hidden = true;
     };
 
@@ -184,7 +181,7 @@
 
     const markActiveStep = (step) => {
         if (!progressList) return;
-        const order = ['meta', 'location', 'hosting', 'whois', 'cms', 'frameworks', 'server'];
+        const order = ['meta', 'location', 'hosting', 'whois', 'cms', 'frameworks', 'server', 'pagespeed'];
         const idx = order.indexOf(step);
         if (idx < 0) return;
         // mark current and any earlier pending steps as active (current)
@@ -651,6 +648,7 @@
         cms:        { icon: '⚙️', title: 'Система керування (CMS)', full: true },
         frameworks: { icon: '🧩', title: 'Фреймворки' },
         server:     { icon: '🖥️', title: 'Веб-сервер', full: true },
+        pagespeed:  { icon: '⚡', title: 'PageSpeed', full: true },
     };
 
     const renderServer = (data) => {
@@ -768,6 +766,64 @@
         }).join('')}</div>`;
     };
 
+    const renderPagespeed = (data) => {
+        if (!data) return '<p class="empty">Інформацію не знайдено</p>';
+        if (data.error && !data.mobile && !data.desktop) {
+            return `<p class="empty">${escapeHtml(data.error)}</p>`
+                + (data.tested_url ? `<div class="server-note">${escapeHtml(data.tested_url)}</div>` : '');
+        }
+        const scoreClass = (v) => {
+            if (v === null || v === undefined) return 'psi-score--na';
+            if (v >= 90) return 'psi-score--good';
+            if (v >= 50) return 'psi-score--avg';
+            return 'psi-score--bad';
+        };
+        const renderPanel = (title, d) => {
+            if (!d) return '';
+            if (d.error) {
+                return `<div class="psi-panel"><h4 class="psi-panel__title">${escapeHtml(title)}</h4>`
+                    + `<p class="empty">${escapeHtml(d.error)}</p></div>`;
+            }
+            const panelScores = [
+                ['Продуктивність', d.performance],
+                ['Доступність', d.accessibility],
+                ['Практики', d.best_practices],
+                ['SEO', d.seo],
+            ];
+            const panelScoresHtml = `<div class="psi-scores">${panelScores.map(([label, v]) => `
+                <div class="psi-score ${scoreClass(v)}">
+                    <span class="psi-score__value">${(v === null || v === undefined) ? '—' : v}</span>
+                    <span class="psi-score__label">${escapeHtml(label)}</span>
+                </div>`).join('')}</div>`;
+            const panelMetrics = d.metrics || {};
+            const panelRows = Object.entries(metricLabels).map(([key, label]) => {
+                const m = panelMetrics[key];
+                if (!m) return '';
+                const val = m.display || (m.value !== null && m.value !== undefined ? String(m.value) : '—');
+                return `<dt class="defs__term">${escapeHtml(key)}</dt><dd class="defs__def">${escapeHtml(val)} <em>(${escapeHtml(label)})</em></dd>`;
+            }).join('');
+            const panelField = d.field_category
+                ? `<dl class="defs"><dt class="defs__term">Польові дані</dt><dd class="defs__def">${escapeHtml(d.field_category)}</dd></dl>`
+                : '';
+            return `<div class="psi-panel"><h4 class="psi-panel__title">${escapeHtml(title)}</h4>`
+                + panelScoresHtml
+                + (panelRows ? `<dl class="defs psi-metrics">${panelRows}</dl>` : '')
+                + panelField + `</div>`;
+        };
+        const metricLabels = {
+            FCP: 'First Contentful Paint',
+            LCP: 'Largest Contentful Paint',
+            TBT: 'Total Blocking Time',
+            CLS: 'Cumulative Layout Shift',
+            SI: 'Speed Index',
+            TTI: 'Time to Interactive',
+        };
+        const strategyNote = `<div class="server-note">Lighthouse · ${escapeHtml(data.tested_url || '')}</div>`
+            + (data.key_fallback ? `<div class="server-note">Ключ API обмежено HTTP-referrer’ами — показано результат без ключа (низька квота). Зніміть обмеження ключа: Application restrictions = None.</div>` : '');
+        return `<div class="psi-cols">${renderPanel('📱 Mobile', data.mobile)}${renderPanel('🖥️ Desktop', data.desktop)}</div>`
+            + strategyNote;
+    };
+
     const renderSection = (name, data) => {
         const meta = cardMeta[name];
         if (!meta) return;
@@ -788,6 +844,12 @@
             updateCard('server', { ...meta, count: rowCount, body: body });
             return;
         }
+        if (name === 'pagespeed') {
+            const body = renderPagespeed(data);
+            const hasError = !!(data && (data.error || (data.mobile && data.mobile.error) || (data.desktop && data.desktop.error)));
+            updateCard('pagespeed', { ...meta, count: hasError ? '!' : 'mobile + desktop', body: body });
+            return;
+        }
         // location, hosting, whois — це key-value definitions
         updateCard(name, { ...meta, count: Object.keys(data || {}).length, body: renderDefinitions(data) });
     };
@@ -797,6 +859,10 @@
         if (eventSource) {
             try { eventSource.close(); } catch (e) { /* noop */ }
             eventSource = null;
+        }
+        if (psiSource) {
+            try { psiSource.close(); } catch (e) { /* noop */ }
+            psiSource = null;
         }
     };
 
@@ -838,14 +904,32 @@
             + '&hp=' + encodeURIComponent(honeypotField ? honeypotField.value : '')
             + '&js=' + encodeURIComponent(jsTokenField ? jsTokenField.value : '')
             + '&ts=' + encodeURIComponent(formLoadedAtField ? formLoadedAtField.value : '');
-        const es = new EventSource('api/stream.php?' + params);
+        const es = new EventSource('api/stream.php?' + params + '&skip=pagespeed');
         eventSource = es;
+        // PageSpeed — окремий паралельний стрім: Lighthouse думає 10–120 с,
+        // і не повинен затримувати швидкі блоки основного стріму.
+        const psi = new EventSource('api/stream.php?' + params + '&only=pagespeed');
+        psiSource = psi;
 
         let sectionsRendered = 0;
         let cachedAt = null;
         let serverErrorShown = false;
+        let pendingMain = true;
+        let pendingPsi = true;
 
-        const onMessage = (eventName) => (e) => {
+        const finishIfDone = () => {
+            if (!pendingMain && !pendingPsi) {
+                setLoading(false);
+            }
+        };
+        const closePsi = () => {
+            if (psiSource) {
+                try { psiSource.close(); } catch (e) { /* noop */ }
+                psiSource = null;
+            }
+        };
+
+        const onMessage = (eventName, tag) => (e) => {
             let payload = null;
             try { payload = JSON.parse(e.data); } catch (err) { payload = null; }
 
@@ -878,9 +962,10 @@
                 case 'cms':
                 case 'frameworks':
                 case 'server':
+                case 'pagespeed':
                     sectionsRendered++;
                     markStepDone(eventName);
-                    const order = ['meta', 'location', 'hosting', 'whois', 'cms', 'frameworks', 'server'];
+                    const order = ['meta', 'location', 'hosting', 'whois', 'cms', 'frameworks', 'server', 'pagespeed'];
                     const nextIdx = order.indexOf(eventName) + 1;
                     if (nextIdx < order.length) {
                         markActiveStep(order[nextIdx]);
@@ -892,44 +977,98 @@
                     break;
 
                 case 'complete':
-                    if (payload && payload.sections) {
-                        lastResult = payload;
-                    } else if (payload && payload.data) {
-                        lastResult = payload.data;
-                    }
-                    finishProgress();
-                    if (pdfBtn) pdfBtn.disabled = false;
-                    if (fromCache) {
-                        showCachedBadge(cachedAt || (payload && payload.checked_at) || null);
+                    if (tag === 'psi') {
+                        // Не затираємо основний результат — лише домерджуємо PageSpeed.
+                        if (payload && payload.sections && payload.sections.pagespeed && lastResult && lastResult.sections) {
+                            lastResult.sections.pagespeed = payload.sections.pagespeed;
+                        }
+                        markStepDone('pagespeed');
+                        pendingPsi = false;
+                        closePsi();
+                        finishIfDone();
                     } else {
-                        hideCachedBadge();
+                        if (payload && payload.sections) {
+                            // Зберігаємо PageSpeed, якщо він уже прийшов паралельним стрімом.
+                            const keepPsi = lastResult && lastResult.sections ? lastResult.sections.pagespeed : undefined;
+                            lastResult = payload;
+                            if (keepPsi !== undefined && lastResult.sections && !lastResult.sections.pagespeed) {
+                                lastResult.sections.pagespeed = keepPsi;
+                            }
+                        } else if (payload && payload.data) {
+                            lastResult = payload.data;
+                        }
+                        ['meta', 'location', 'hosting', 'whois', 'cms', 'frameworks', 'server'].forEach(markStepDone);
+                        if (pdfBtn) pdfBtn.disabled = false;
+                        if (fromCache) {
+                            showCachedBadge(cachedAt || (payload && payload.checked_at) || null);
+                        } else {
+                            hideCachedBadge();
+                        }
+                        pendingMain = false;
+                        try { es.close(); } catch (e) { /* noop */ }
+                        eventSource = null;
+                        finishIfDone();
                     }
-                    closeStream();
-                    setLoading(false);
                     break;
 
                 case 'error':
-                    serverErrorShown = true;
-                    finishProgress();
-                    setLoading(false);
-                    showError((payload && payload.error) || 'Сталася помилка під час аналізу');
-                    closeStream();
+                    if (tag === 'psi') {
+                        // Помилка PageSpeed не валить весь аналіз — показуємо її в картці.
+                        const errData = { error: (payload && payload.error) || 'Сталася помилка PageSpeed', tested_url: (lastResult && lastResult.url) || lastUrl || '' };
+                        if (lastResult && lastResult.sections) {
+                            lastResult.sections.pagespeed = errData;
+                        }
+                        renderSection('pagespeed', errData);
+                        markStepDone('pagespeed');
+                        pendingPsi = false;
+                        closePsi();
+                        finishIfDone();
+                    } else {
+                        serverErrorShown = true;
+                        ['meta', 'location', 'hosting', 'whois', 'cms', 'frameworks', 'server', 'pagespeed'].forEach(markStepDone);
+                        pendingMain = false;
+                        pendingPsi = false;
+                        closePsi();
+                        try { es.close(); } catch (e) { /* noop */ }
+                        eventSource = null;
+                        setLoading(false);
+                        showError((payload && payload.error) || 'Сталася помилка під час аналізу');
+                    }
                     break;
             }
         };
 
         // реєструємо обробники для кожної події
         ['cached', 'meta', 'location', 'hosting', 'whois', 'cms', 'frameworks', 'server', 'complete', 'error'].forEach((name) => {
-            es.addEventListener(name, onMessage(name));
+            es.addEventListener(name, onMessage(name, 'main'));
+        });
+        ['cached', 'pagespeed', 'complete', 'error'].forEach((name) => {
+            psi.addEventListener(name, onMessage(name, 'psi'));
         });
 
         es.onerror = () => {
-            if (es.readyState === EventSource.CLOSED) {
+            if (es.readyState === EventSource.CLOSED && pendingMain) {
                 if (!serverErrorShown && lastResult && (!lastResult.sections || Object.keys(lastResult.sections).length === 0)) {
                     showError('З\'єднання з сервером перервано. Спробуйте пізніше.');
                 }
-                closeStream();
-                setLoading(false);
+                pendingMain = false;
+                try { es.close(); } catch (e) { /* noop */ }
+                eventSource = null;
+                finishIfDone();
+            }
+        };
+
+        psi.onerror = () => {
+            if (psi.readyState === EventSource.CLOSED && pendingPsi) {
+                if (!lastResult.sections || !lastResult.sections.pagespeed) {
+                    const errData = { error: 'Не вдалося завантажити PageSpeed. Спробуйте оновити.', tested_url: (lastResult && lastResult.url) || lastUrl || '' };
+                    lastResult.sections.pagespeed = errData;
+                    renderSection('pagespeed', errData);
+                }
+                markStepDone('pagespeed');
+                pendingPsi = false;
+                closePsi();
+                finishIfDone();
             }
         };
     };
@@ -1288,6 +1427,41 @@
             if (s.via) writeWrapped('Via: ' + s.via, 9, 'italic', [139, 136, 163]);
             if (s.x_server) writeWrapped(s.x_server, 9, 'italic', [139, 136, 163]);
             if (s.db_note && s.db_note !== s.note) writeWrapped(s.db_note, 9, 'italic', [139, 136, 163]);
+            y += 6;
+        }
+
+        // PageSpeed Insights (Lighthouse mobile + desktop) — виключно покази PSI
+        if (sections.pagespeed) {
+            const p = sections.pagespeed;
+            checkPageBreak(40);
+            doc.setDrawColor(229, 225, 245);
+            doc.line(margin, y, pageWidth - margin, y);
+            y += 16;
+            writeWrapped('PageSpeed', 13, 'bold', [109, 40, 217]);
+            y += 4;
+            if (p.error && !p.mobile && !p.desktop) {
+                writeWrapped('Помилка: ' + p.error, 10, 'normal', [139, 136, 163]);
+                if (p.tested_url) writeWrapped(p.tested_url, 9, 'normal', [139, 136, 163]);
+            } else {
+                [['Mobile', p.mobile], ['Desktop', p.desktop]].forEach(([label, s]) => {
+                    if (!s) return;
+                    if (s.error) {
+                        writeWrapped(`${label}: помилка — ${s.error}`, 10, 'normal', [139, 136, 163]);
+                        return;
+                    }
+                    const scoreLine = ['performance', 'accessibility', 'best_practices', 'seo']
+                        .map((k) => `${k}: ${s[k] ?? '—'}`).join(' · ');
+                    writeWrapped(`Бали (${label}): ${scoreLine}`, 10, 'bold', [31, 17, 71]);
+                    if (s.metrics) {
+                        Object.entries({ FCP: 'First Contentful Paint', LCP: 'Largest Contentful Paint', TBT: 'Total Blocking Time', CLS: 'Cumulative Layout Shift', SI: 'Speed Index', TTI: 'Time to Interactive' }).forEach(([k, lb]) => {
+                            const m = s.metrics[k];
+                            if (m) writeWrapped(`${label} ${k} (${lb}): ${m.display || m.value || '—'}`, 9, 'normal', [31, 17, 71]);
+                        });
+                    }
+                    if (s.field_category) writeWrapped(`${label} польові дані (CrUX): ${s.field_category}`, 9, 'normal', [91, 87, 120]);
+                });
+                if (p.tested_url) writeWrapped(p.tested_url, 9, 'normal', [139, 136, 163]);
+            }
             y += 6;
         }
 

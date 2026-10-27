@@ -6,6 +6,11 @@ require_once __DIR__ . '/../src/Detector.php';
 require_once __DIR__ . '/../src/Cache.php';
 require_once __DIR__ . '/../src/SpamProtection.php';
 
+// Локальні налаштування (config.php у .gitignore): PAGESPEED_API_KEY та інше.
+if (is_file(__DIR__ . '/../config.php')) {
+    require_once __DIR__ . '/../config.php';
+}
+
 use App\Cache;
 use App\Detector;
 use App\SpamProtection;
@@ -21,13 +26,24 @@ use App\SpamProtection;
  *   - cms        : виявлені CMS (з вбудованими WordPress-деталями всередині, якщо WP)
  *   - frameworks : PHP/JS-фреймворки
  *   - server     : єдина секція Веб-сервер (веб-сервер, Node.js, PHP, Python, CDN, база даних)
+ *   - pagespeed  : покази Google PageSpeed Insights (Lighthouse mobile: бали + метрики)
  *   - complete   : фінальний результат
  *   - error      : повідомлення про помилку
+ *
+ * Паралельні стріми (щоб повільний PageSpeed не затримував швидкі блоки):
+ *   - only=pagespeed : виконати й віддати лише PageSpeed (фронтенд відкриває
+ *     цей стрім паралельно з основним); кешується окремо (`<domain>.pagespeed`),
+ *     тому записи паралельних стрімів не конфліктують
+ *   - skip=a,b       : виконати все, крім перелічених секцій (основний стрім
+ *     фронтенда передає skip=pagespeed)
+ * Без only/skip — колишня поведінка: все в одному стрімі (для сумісності).
  *
  * Параметри:
  *   - url    : URL або домен для аналізу (обов'язково)
  *   - force  : 1 — ігнорувати кеш, виконати свіжий аналіз (необов'язково)
  *   - ttl    : TTL кешу в секундах (необов'язково, 86400 за замовчуванням)
+ *   - only   : comma-separated список секцій (напр. only=pagespeed)
+ *   - skip   : comma-separated список секцій для пропуску
  */
 
 // Вимикаємо буферизацію виводу, щоб події летіли клієнту одразу.
@@ -97,7 +113,7 @@ function mp_stream_emit_result(array $data): void
     ]);
 
     $sections = $data['sections'] ?? [];
-    $order = ['location', 'hosting', 'whois', 'cms', 'frameworks', 'server'];
+    $order = ['location', 'hosting', 'whois', 'cms', 'frameworks', 'server', 'pagespeed'];
     foreach ($order as $section) {
         if (!empty($sections[$section])) {
             mp_stream_send($section, $sections[$section]);
@@ -117,17 +133,45 @@ $force = isset($_GET['force']) && (string)$_GET['force'] !== '' && (string)$_GET
 $ttlParam = isset($_GET['ttl']) ? (int)$_GET['ttl'] : 0;
 $ttl = $ttlParam > 0 ? $ttlParam : Cache::DEFAULT_TTL;
 
+/**
+ * Розбирає comma-separated параметр (only/skip) у список допустимих секцій.
+ *
+ * @return string[]
+ */
+function mp_stream_parse_sections($value): array
+{
+    if (!is_string($value) || trim($value) === '') {
+        return [];
+    }
+    $allowed = ['meta', 'location', 'hosting', 'whois', 'cms', 'frameworks', 'server', 'pagespeed'];
+    $out = [];
+    foreach (explode(',', $value) as $part) {
+        $part = strtolower(trim($part));
+        if ($part !== '' && in_array($part, $allowed, true) && !in_array($part, $out, true)) {
+            $out[] = $part;
+        }
+    }
+    return $out;
+}
+
+$only = mp_stream_parse_sections($_GET['only'] ?? null);
+$skip = mp_stream_parse_sections($_GET['skip'] ?? null);
+
 try {
     $detector = new Detector($raw);
     $normalizedDomain = $detector->getDomain();
 
     $cache = new Cache(null, $ttl);
+    // Режим only=... кешується окремим ключем (суфікс без ':' і '/',
+    // бо Cache::hashDomain відрізає все після них), щоб паралельні стріми
+    // (основний + pagespeed) не затирали записи одне одного.
+    $cacheKey = !empty($only) ? $normalizedDomain . '.' . implode('.', $only) : $normalizedDomain;
 
     if (!$force) {
-        $cached = $cache->get($normalizedDomain);
+        $cached = $cache->get($cacheKey);
         if ($cached !== null) {
-            $cachedAt = is_file($cache->fileFor($normalizedDomain))
-                ? filemtime($cache->fileFor($normalizedDomain))
+            $cachedAt = is_file($cache->fileFor($cacheKey))
+                ? filemtime($cache->fileFor($cacheKey))
                 : time();
             mp_stream_send('cached', [
                 'domain' => $normalizedDomain,
@@ -147,10 +191,10 @@ try {
             return; // complete надішлемо в кінці через emit_result
         }
         mp_stream_send($section, $data);
-    });
+    }, $only, $skip);
 
     if (is_array($result) && !empty($result['domain'])) {
-        $cache->set($result['domain'], $result);
+        $cache->set($cacheKey, $result);
         // Зберігаємо дані й надсилаємо complete-подію
         $result['cached'] = false;
         mp_stream_send('complete', $result);
