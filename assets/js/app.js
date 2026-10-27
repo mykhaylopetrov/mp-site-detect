@@ -194,7 +194,7 @@
                 item.classList.remove('progress__item--pending');
                 item.classList.add('progress__item--active');
             } else {
-                // попередні кроки, які ще не завершилися — позначаємо як активні, поки немає відповіді
+                // previous steps that haven't finished yet — mark as active while awaiting response
                 if (!item.classList.contains('progress__item--active')) {
                     item.classList.remove('progress__item--pending');
                     item.classList.add('progress__item--active');
@@ -265,10 +265,10 @@
         };
 
         // Version
-        // wp.version       — точна версія (з generator/readme/theme_tested)
-        // wp.version_min   — нижня межа (з REST API або twemoji), якщо точна невідома
-        // wp.version_source — джерело визначення: 'generator' | 'readme' | 'theme_tested' | 'rest_api' | 'twemoji' | 'hidden'
-        // wp.version_note  — пояснення для користувача
+        // wp.version       — exact version (from generator/readme/theme_tested)
+        // wp.version_min   — lower bound (from REST API or twemoji) when exact is unknown
+        // wp.version_source — detection source: 'generator' | 'readme' | 'theme_tested' | 'rest_api' | 'twemoji' | 'hidden'
+        // wp.version_note  — explanation for the user
         if (wp.version) {
             const sourceLabels = {
                 generator: 'мета-тег <em>generator</em>',
@@ -342,8 +342,8 @@
             </div>`);
         }
 
-        // Page builder(s) — може бути кілька (наприклад, Elementor + WPBakery).
-        // Gutenberg тут немає свідомо: він у ядрі WP за замовчуванням.
+        // Page builder(s) — there may be several (e.g., Elementor + WPBakery).
+        // Gutenberg is intentionally absent here: it ships with WP core by default.
         const builders = Array.isArray(wp.page_builders)
             ? wp.page_builders
             : (wp.page_builder ? [wp.page_builder] : []);
@@ -414,7 +414,7 @@
             parts.push('<p class="wp-note">' + escapeHtml(wp.note) + '</p>');
         }
 
-        // Адмін-панель (логін) — під інформаційним повідомленням про плагіни
+        // Admin panel (login) — below the plugin info message
         if (wp.login_url) {
             const li = wp.login_url;
             if (li.is_hidden) {
@@ -445,7 +445,7 @@
         if (!j) return '';
         const parts = [];
 
-        // Версія ядра
+        // Core version
         if (j.version) {
             const sourceLabels = {
                 generator: 'мета-тег generator',
@@ -467,7 +467,7 @@
             </div>`);
         }
 
-        // Активний шаблон
+        // Active template
         if (j.template) {
             const t = j.template;
             parts.push(`<div class="wp-theme">
@@ -483,7 +483,7 @@
             </div>`);
         }
 
-        // Розширення (компоненти, модулі, плагіни)
+        // Extensions (components, modules, plugins)
         if (Array.isArray(j.extensions) && j.extensions.length > 0) {
             const extList = j.extensions.map((e) => `
                 <div class="wp-plugin">
@@ -499,7 +499,7 @@
             parts.push('<p class="wp-note">' + escapeHtml(j.note) + '</p>');
         }
 
-        // Адмінка
+        // Admin panel
         if (j.admin_url) {
             const ad = j.admin_url;
             if (ad.is_hidden) {
@@ -525,7 +525,7 @@
         if (!d) return '';
         const parts = [];
 
-        // Версія ядра
+        // Core version
         if (d.version) {
             const sourceLabels = {
                 changelog: 'файл <em>/core/CHANGELOG.txt</em>',
@@ -547,7 +547,7 @@
             </div>`);
         }
 
-        // Активна тема
+        // Active theme
         if (d.theme) {
             const t = d.theme;
             parts.push(`<div class="wp-theme">
@@ -561,7 +561,7 @@
             </div>`);
         }
 
-        // Модулі
+        // Modules
         if (Array.isArray(d.modules) && d.modules.length > 0) {
             const modList = d.modules.map((mm) => `
                 <div class="wp-plugin">
@@ -575,7 +575,7 @@
             parts.push('<p class="wp-note">' + escapeHtml(d.note) + '</p>');
         }
 
-        // Вхід
+        // Login
         if (d.login_url) {
             const li = d.login_url;
             if (li.is_hidden) {
@@ -657,7 +657,7 @@
         const parts = [];
         const rows = [];
 
-        // 1. веб-сервер
+        // 1. web server
         const name = (data.name && data.name !== 'невідомо') ? data.name : (data.raw || 'невідомо');
         let serverLabel = data.version ? escapeHtml(name) + ' / ' + escapeHtml(data.version) : escapeHtml(name);
         if (data.server_modules && typeof data.server_modules === 'object') {
@@ -666,7 +666,7 @@
         }
         rows.push('<dt class="defs__term">Веб-сервер</dt><dd class="defs__def">' + serverLabel + '</dd>');
 
-        // 1b. протокол (реальний факт про стек: HTTP/1.1 vs HTTP/2)
+        // 1b. protocol (real stack fact: HTTP/1.1 vs HTTP/2)
         if (data.http_version) {
             rows.push('<dt class="defs__term">Протокол</dt><dd class="defs__def">' + escapeHtml(data.http_version) + '</dd>');
         }
@@ -705,7 +705,7 @@
             rows.push('<dt class="defs__term">CDN</dt><dd class="defs__def"><span class="empty" style="padding:0;font-style:normal">не виявлено</span></dd>');
         }
 
-        // 6. База даних
+        // 6. Database
         if (data.dbms) {
             const dbVer = data.db_version ? ' v' + escapeHtml(data.db_version) : '';
             const dbSrc = data.db_source ? ' <em>(' + escapeHtml(data.db_source) + ')</em>' : '';
@@ -716,7 +716,7 @@
 
         parts.push('<dl class="defs">' + rows.join('') + '</dl>');
 
-        // Докази проксі/бекенда, коли Server приховано або за CDN.
+        // Proxy/backend evidence when Server is hidden or behind a CDN.
         if (data.via) {
             parts.push('<div class="server-note">Via: ' + escapeHtml(data.via) + '</div>');
         }
@@ -839,7 +839,7 @@
             return;
         }
         if (name === 'server') {
-            // Кількість рядків динамічна (базові 6 + протокол/Via за наявності)
+            // Row count is dynamic (base 6 + protocol/Via when present)
             const body = renderServer(data);
             const rowCount = (body.match(/defs__term/g) || []).length || 6;
             updateCard('server', { ...meta, count: rowCount, body: body });
@@ -851,7 +851,7 @@
             updateCard('pagespeed', { ...meta, count: hasError ? '!' : 'mobile + desktop', body: body });
             return;
         }
-        // location, hosting, whois — це key-value definitions
+        // location, hosting, whois are key-value definitions
         updateCard(name, { ...meta, count: Object.keys(data || {}).length, body: renderDefinitions(data) });
     };
 
@@ -876,7 +876,7 @@
             return;
         }
 
-        // Скидаємо стан результатів
+        // Reset results state
         lastResult = {
             input: url,
             domain: '',
@@ -907,8 +907,8 @@
             + '&ts=' + encodeURIComponent(formLoadedAtField ? formLoadedAtField.value : '');
         const es = new EventSource('api/stream.php?' + params + '&skip=pagespeed');
         eventSource = es;
-        // PageSpeed — окремий паралельний стрім: Lighthouse думає 10–120 с,
-        // і не повинен затримувати швидкі блоки основного стріму.
+        // PageSpeed is a separate parallel stream: Lighthouse takes 10–120s,
+        // and must not delay the fast blocks of the main stream.
         const psi = new EventSource('api/stream.php?' + params + '&only=pagespeed');
         psiSource = psi;
 
@@ -979,7 +979,7 @@
 
                 case 'complete':
                     if (tag === 'psi') {
-                        // Не затираємо основний результат — лише домерджуємо PageSpeed.
+                        // Don't overwrite the main result — only merge PageSpeed in.
                         if (payload && payload.sections && payload.sections.pagespeed && lastResult && lastResult.sections) {
                             lastResult.sections.pagespeed = payload.sections.pagespeed;
                         }
@@ -989,7 +989,7 @@
                         finishIfDone();
                     } else {
                         if (payload && payload.sections) {
-                            // Зберігаємо PageSpeed, якщо він уже прийшов паралельним стрімом.
+                            // Preserve PageSpeed if it already arrived via the parallel stream.
                             const keepPsi = lastResult && lastResult.sections ? lastResult.sections.pagespeed : undefined;
                             lastResult = payload;
                             if (keepPsi !== undefined && lastResult.sections && !lastResult.sections.pagespeed) {
@@ -1014,7 +1014,7 @@
 
                 case 'error':
                     if (tag === 'psi') {
-                        // Помилка PageSpeed не валить весь аналіз — показуємо її в картці.
+                        // A PageSpeed error doesn't fail the whole analysis — show it in the card.
                         const errData = { error: (payload && payload.error) || 'Сталася помилка PageSpeed', tested_url: (lastResult && lastResult.url) || lastUrl || '' };
                         if (lastResult && lastResult.sections) {
                             lastResult.sections.pagespeed = errData;
@@ -1039,7 +1039,7 @@
             }
         };
 
-        // реєструємо обробники для кожної події
+        // register handlers for each event
         ['cached', 'meta', 'location', 'hosting', 'whois', 'cms', 'frameworks', 'server', 'complete', 'error'].forEach((name) => {
             es.addEventListener(name, onMessage(name, 'main'));
         });
@@ -1097,7 +1097,7 @@
     if (refreshBtn) {
         refreshBtn.addEventListener('click', () => {
             if (!lastUrl) {
-                // Якщо ще не було аналізу, просто повторюємо submit форми
+                // If no analysis ran yet, just repeat the form submit
                 if (typeof form.requestSubmit === 'function') {
                     form.requestSubmit();
                 } else {
@@ -1105,7 +1105,7 @@
                 }
                 return;
             }
-            // Примусово оновлюємо з поточним URL, ігноруючи кеш
+            // Force refresh with the current URL, ignoring cache
             const url = input.value && input.value.trim() ? input.value.trim() : lastUrl;
             const validation = validateUrl(url);
             if (!validation.ok) {
@@ -1323,7 +1323,7 @@
         renderSection('Місцезнаходження', sections.location);
         renderSection('Хостинг-провайдер', sections.hosting);
         renderSection('WHOIS-інформація', sections.whois);
-        // CMS — якщо є WordPress, його деталі вже всередині елемента cms
+        // CMS — if WordPress is present, its details are already inside the cms item
         if (sections.cms) {
             checkPageBreak(40);
             doc.setDrawColor(229, 225, 245);
@@ -1384,7 +1384,7 @@
         }
         renderSection('Фреймворки', sections.frameworks, true);
 
-        // Веб-сервер — єдина секція на всю ширину (6 рядків)
+        // Web server — single full-width section (6 rows)
         if (sections.server) {
             const s = sections.server;
             checkPageBreak(40);
@@ -1431,7 +1431,7 @@
             y += 6;
         }
 
-        // PageSpeed Insights (Lighthouse mobile + desktop) — виключно покази PSI
+        // PageSpeed Insights (Lighthouse mobile + desktop) — PSI output only
         if (sections.pagespeed) {
             const p = sections.pagespeed;
             checkPageBreak(40);
@@ -1466,7 +1466,7 @@
             y += 6;
         }
 
-        // Сумісність зі старими кешами — якщо раптом є окрема wordpress секція
+        // Backward compatibility with old caches — in case a separate wordpress section exists
         if (sections.wordpress && !sections.cms?.some(c=>c.wordpress)) {
             const wp = sections.wordpress;
             checkPageBreak(40);
@@ -1529,7 +1529,7 @@
                 });
                 y += 4;
             } else if (wp.page_builder) {
-                // Зворотна сумісність зі старим форматом кешу
+                // Backward compatibility with the old cache format
                 const pb = wp.page_builder;
                 const methodLabels = { body_class: 'клас <body>', plugin: 'наявний плагін', html: 'HTML-розмітка' };
                 const method = methodLabels[pb.detection] || pb.detection || '';

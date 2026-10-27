@@ -6,7 +6,7 @@ require_once __DIR__ . '/../src/Detector.php';
 require_once __DIR__ . '/../src/Cache.php';
 require_once __DIR__ . '/../src/SpamProtection.php';
 
-// Локальні налаштування (config.php у .gitignore): PAGESPEED_API_KEY та інше.
+// Local settings (config.php in .gitignore): PAGESPEED_API_KEY and more.
 if (is_file(__DIR__ . '/../config.php')) {
     require_once __DIR__ . '/../config.php';
 }
@@ -16,37 +16,37 @@ use App\Detector;
 use App\SpamProtection;
 
 /**
- * SSE-ендпоінт для потокової видачі результатів аналізу сайту.
- * Замість одного великого JSON повертає серію подій:
- *   - cached     : надіслано на початку, якщо результат взято з кешу
- *   - meta       : базова інформація (domain, url, ip, checked_at)
- *   - location   : місцезнаходження за IP
- *   - hosting    : хостинг-провайдер
- *   - whois      : WHOIS-інформація
- *   - cms        : виявлені CMS (з вбудованими WordPress-деталями всередині, якщо WP)
- *   - frameworks : PHP/JS-фреймворки
- *   - server     : єдина секція Веб-сервер (веб-сервер, Node.js, PHP, Python, CDN, база даних)
- *   - pagespeed  : покази Google PageSpeed Insights (Lighthouse mobile: бали + метрики)
- *   - complete   : фінальний результат
- *   - error      : повідомлення про помилку
+ * SSE endpoint for streaming site analysis results.
+ * Instead of one large JSON it returns a series of events:
+ *   - cached     : sent at the start if the result is taken from cache
+ *   - meta       : basic info (domain, url, ip, checked_at)
+ *   - location   : IP-based location
+ *   - hosting    : hosting provider
+ *   - whois      : WHOIS info
+ *   - cms        : detected CMS (with built-in WordPress details inside, if WP)
+ *   - frameworks : PHP/JS frameworks
+ *   - server     : single Web Server section (web server, Node.js, PHP, Python, CDN, database)
+ *   - pagespeed  : Google PageSpeed Insights scores (Lighthouse mobile: scores + metrics)
+ *   - complete   : final result
+ *   - error      : error message
  *
- * Паралельні стріми (щоб повільний PageSpeed не затримував швидкі блоки):
- *   - only=pagespeed : виконати й віддати лише PageSpeed (фронтенд відкриває
- *     цей стрім паралельно з основним); кешується окремо (`<domain>.pagespeed`),
- *     тому записи паралельних стрімів не конфліктують
- *   - skip=a,b       : виконати все, крім перелічених секцій (основний стрім
- *     фронтенда передає skip=pagespeed)
- * Без only/skip — колишня поведінка: все в одному стрімі (для сумісності).
+ * Parallel streams (so slow PageSpeed does not delay fast blocks):
+ *   - only=pagespeed : run and return PageSpeed only (the frontend opens
+ *     this stream in parallel with the main one); cached separately
+ *     (`<domain>.pagespeed`), so parallel stream records do not conflict
+ *   - skip=a,b       : run everything except the listed sections (the frontend
+ *     main stream passes skip=pagespeed)
+ * Without only/skip — legacy behavior: everything in one stream (for compatibility).
  *
- * Параметри:
- *   - url    : URL або домен для аналізу (обов'язково)
- *   - force  : 1 — ігнорувати кеш, виконати свіжий аналіз (необов'язково)
- *   - ttl    : TTL кешу в секундах (необов'язково, 86400 за замовчуванням)
- *   - only   : comma-separated список секцій (напр. only=pagespeed)
- *   - skip   : comma-separated список секцій для пропуску
+ * Parameters:
+ *   - url    : URL or domain to analyze (required)
+ *   - force  : 1 — ignore cache, run a fresh analysis (optional)
+ *   - ttl    : cache TTL in seconds (optional, 86400 by default)
+ *   - only   : comma-separated list of sections (e.g. only=pagespeed)
+ *   - skip   : comma-separated list of sections to skip
  */
 
-// Вимикаємо буферизацію виводу, щоб події летіли клієнту одразу.
+// Disable output buffering so events reach the client immediately.
 @ini_set('output_buffering', '0');
 @ini_set('implicit_flush', '1');
 @ob_implicit_flush(true);
@@ -61,11 +61,11 @@ if (function_exists('session_status')) {
     }
 }
 
-// Заголовки SSE
+// SSE headers
 header('Content-Type: text/event-stream; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, no-transform');
 header('Connection: keep-alive');
-header('X-Accel-Buffering: no'); // вимикає буферизацію у nginx
+header('X-Accel-Buffering: no'); // disables buffering in nginx
 header('Access-Control-Allow-Origin: *');
 
 $spamGuard = (new SpamProtection())->guard([
@@ -80,10 +80,10 @@ if (!$spamGuard['ok']) {
 }
 
 /**
- * Надсилає одну подію SSE.
+ * Sends a single SSE event.
  *
- * @param string $name назва події
- * @param mixed  $data дані (серіалізуються у JSON)
+ * @param string $name event name
+ * @param mixed  $data payload (serialized to JSON)
  */
 function mp_stream_send(string $name, $data): void
 {
@@ -98,10 +98,10 @@ function mp_stream_send(string $name, $data): void
 }
 
 /**
- * Відправляє всі секції результату як окремі SSE-події.
- * Використовується і для свіжого аналізу, і для видачі з кешу.
+ * Sends all result sections as separate SSE events.
+ * Used both for fresh analysis and for serving from cache.
  *
- * @param array<string, mixed> $data повний результат analyze()
+ * @param array<string, mixed> $data full analyze() result
  */
 function mp_stream_emit_result(array $data): void
 {
@@ -134,7 +134,7 @@ $ttlParam = isset($_GET['ttl']) ? (int)$_GET['ttl'] : 0;
 $ttl = $ttlParam > 0 ? $ttlParam : Cache::DEFAULT_TTL;
 
 /**
- * Розбирає comma-separated параметр (only/skip) у список допустимих секцій.
+ * Parses a comma-separated parameter (only/skip) into a list of allowed sections.
  *
  * @return string[]
  */
@@ -162,9 +162,9 @@ try {
     $normalizedDomain = $detector->getDomain();
 
     $cache = new Cache(null, $ttl);
-    // Режим only=... кешується окремим ключем (суфікс без ':' і '/',
-    // бо Cache::hashDomain відрізає все після них), щоб паралельні стріми
-    // (основний + pagespeed) не затирали записи одне одного.
+    // only=... mode is cached under a separate key (suffix without ':' and '/',
+    // because Cache::hashDomain strips everything after them) so parallel streams
+    // (main + pagespeed) do not overwrite each other's records.
     $cacheKey = !empty($only) ? $normalizedDomain . '.' . implode('.', $only) : $normalizedDomain;
 
     if (!$force) {
@@ -183,19 +183,19 @@ try {
         }
     }
 
-    // Свіжий аналіз
+    // Fresh analysis
     $result = null;
     $detector->analyzeWithCallback(function (string $section, $data) use (&$result): void {
         if ($section === 'complete') {
             $result = $data;
-            return; // complete надішлемо в кінці через emit_result
+            return; // complete will be sent at the end via emit_result
         }
         mp_stream_send($section, $data);
     }, $only, $skip);
 
     if (is_array($result) && !empty($result['domain'])) {
         $cache->set($cacheKey, $result);
-        // Зберігаємо дані й надсилаємо complete-подію
+        // Persist data and send the complete event
         $result['cached'] = false;
         mp_stream_send('complete', $result);
     }

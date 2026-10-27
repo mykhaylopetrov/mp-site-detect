@@ -707,7 +707,7 @@ body {
     border-top-color: var(--color-primary);
     background: transparent;
     animation: spin 800ms linear infinite;
-    /* Заливаємо тільки верх, як у класичному спінері */
+    /* Fill only the top, like a classic spinner */
     border-right-color: transparent;
     border-bottom-color: transparent;
 }

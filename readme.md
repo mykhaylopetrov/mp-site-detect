@@ -1,442 +1,442 @@
 # MP Site Detect
 
-Веб-сервіс аналізу сайтів: визначає IP-адресу, місцезнаходження, хостинг-провайдера,
-WHOIS-дані домену, використану CMS (з деталями WordPress всередині), фреймворки,
-уніфіковану секцію Веб-сервер (сервер, Node.js, PHP, Python, CDN, база даних)
-та покази Google PageSpeed Insights (Lighthouse mobile + desktop).
+Web service for website analysis: detects the IP address, location, hosting provider,
+domain WHOIS data, the CMS in use (with WordPress details inside), frameworks,
+a unified Web Server section (server, Node.js, PHP, Python, CDN, database)
+and Google PageSpeed Insights scores (Lighthouse mobile + desktop).
 
-## Стек
+## Stack
 
-- **Backend**: PHP 8+ (без зовнішніх залежностей)
-- **Frontend**: чистий JavaScript + jsPDF (CDN) для експорту в PDF
-- **Стилі**: CSS із BEM-методологією
-- **Транспорт**: SSE (Server-Sent Events) для потокової видачі результатів
-- **HTTP**: cURL для надійного захоплення заголовків (Server, X-Powered-By, CF-RAY тощо)
-- **Кеш**: файловий (без БД), 24 години за замовчуванням, з версіонуванням схеми
+- **Backend**: PHP 8+ (no external dependencies)
+- **Frontend**: vanilla JavaScript + jsPDF (CDN) for PDF export
+- **Styles**: CSS with BEM methodology
+- **Transport**: SSE (Server-Sent Events) for streaming results
+- **HTTP**: cURL for reliable header capture (Server, X-Powered-By, CF-RAY, etc.)
+- **Cache**: file-based (no DB), 24 hours by default, with schema versioning
 
-## Можливості
+## Features
 
-1. 🌐 **IP та місцезнаходження** — країна, регіон, місто, координати, часовий пояс
-2. 🏢 **Хостинг-провайдер** — ISP, організація, автономна система (AS)
-3. 📋 **WHOIS** — реєстратор, дати створення/оновлення/закінчення, DNS-сервери
-4. ⚙️ **CMS** — WordPress, Joomla, Drupal, OpenCart, PrestaShop, Magento, 1С-Бітрікс та ін. Якщо знайдено **WordPress**, його версія, тема, parent-тема, конструктори сторінок, WooCommerce та плагіни виводяться **прямо всередині картки CMS** поряд із назвою CMS (окремої секції WordPress немає)
-5. 🧩 **Фреймворки** — Laravel, Symfony, Yii, React, Vue, Angular, Next.js, Nuxt.js, Django, ASP.NET
-6. 🖥️ **Веб-сервер (єдина секція на всю ширину)** — коротко 6 рядків:
-   - веб-сервер (назва, версія — з `Server` / `X-Powered-By`);
-   - Node.js (якщо присутній — версія з `X-Powered-By: Express` / `Server: Node.js`);
-   - PHP (якщо присутній — точна версія з `X-Powered-By` / `Server` / `phpinfo`);
-   - Python (якщо присутній — версія з `Server: gunicorn/uvicorn` / `X-Powered-By: Python` або інференс за Django/Flask);
-   - CDN (якщо присутній — назва провайдера: Cloudflare, Amazon CloudFront, Fastly, Akamai, QUIC.cloud, BunnyCDN, KeyCDN, Sucuri, StackPath, Imperva, Varnish);
-   - база даних (назва СУБД — MySQL / MariaDB / PostgreSQL / SQLite / Progress / MSSQL / Oracle — та версія, якщо сайт її точно розкриває через відкритий `phpinfo`, заголовки `X-DB-*` або витік SQL-помилки).
-7. ⚡ **PageSpeed** — виключно покази Google PageSpeed Insights (Lighthouse): дві стратегії поруч — **Mobile** і **Desktop** — для зручного порівняння: бали Performance / Accessibility / Best Practices / SEO (0–100) та метрики FCP, LCP, TBT, CLS, Speed Index, TTI + польові дані CrUX (якщо є).
-8. 📡 **Потокова видача результатів** — кожен модуль з'являється у мірі готовності
-9. 💾 **Локальний кеш** — повторні запити того самого домену миттєві, без навантаження
-   на сторонні API та WHOIS-сервери
-10. 🛡️ **Захист від СПАМу та ботів** — багаторівневий фільтр без зовнішніх залежностей
-    (CSRF-токени, honeypot-поле, JS-маркер, перевірка часу взаємодії, rate-limit)
+1. 🌐 **IP and location** — country, region, city, coordinates, timezone
+2. 🏢 **Hosting provider** — ISP, organization, autonomous system (AS)
+3. 📋 **WHOIS** — registrar, creation/update/expiration dates, DNS servers
+4. ⚙️ **CMS** — WordPress, Joomla, Drupal, OpenCart, PrestaShop, Magento, 1C-Bitrix, and others. If **WordPress**, its version, theme, parent theme, page builders, WooCommerce, and plugins are shown **directly inside the CMS card** next to the CMS name (there is no separate WordPress section)
+5. 🧩 **Frameworks** — Laravel, Symfony, Yii, React, Vue, Angular, Next.js, Nuxt.js, Django, ASP.NET
+6. 🖥️ **Web server (single full-width section)** — briefly 6 lines:
+   - web server (name, version — from `Server` / `X-Powered-By`);
+   - Node.js (if present — version from `X-Powered-By: Express` / `Server: Node.js`);
+   - PHP (if present — exact version from `X-Powered-By` / `Server` / `phpinfo`);
+   - Python (if present — version from `Server: gunicorn/uvicorn` / `X-Powered-By: Python` or inference from Django/Flask);
+   - CDN (if present — provider name: Cloudflare, Amazon CloudFront, Fastly, Akamai, QUIC.cloud, BunnyCDN, KeyCDN, Sucuri, StackPath, Imperva, Varnish);
+   - database (DBMS name — MySQL / MariaDB / PostgreSQL / SQLite / Progress / MSSQL / Oracle — and version, if the site discloses it exactly via an open `phpinfo`, `X-DB-*` headers, or an SQL-error leak).
+7. ⚡ **PageSpeed** — exclusively Google PageSpeed Insights scores (Lighthouse): two strategies side by side — **Mobile** and **Desktop** — for easy comparison: Performance / Accessibility / Best Practices / SEO scores (0–100) and FCP, LCP, TBT, CLS, Speed Index, TTI metrics + CrUX field data (if available).
+8. 📡 **Streaming results** — each module appears as soon as it is ready
+9. 💾 **Local cache** — repeat requests for the same domain are instant, with no load
+   on third-party APIs and WHOIS servers
+10. 🛡️ **Spam and bot protection** — multi-layer filter with no external dependencies
+    (CSRF tokens, honeypot field, JS marker, interaction-time check, rate limit)
 
-> Секції **«Загальні дані сайту»** (title/description/generator) та **«Технології та бібліотеки»** (jQuery, Bootstrap тощо) прибрано для скорочення шуму. Секції **«CDN»** та **«База даних»** також прибрано як окремі картки — їх дані тепер входять до єдиної секції **Веб-сервер**.
+> The **"Site overview"** (title/description/generator) and **"Technologies & libraries"** (jQuery, Bootstrap, etc.) sections were removed to reduce noise. The **"CDN"** and **"Database"** sections were also removed as separate cards — their data is now part of the single **Web Server** section.
 
-Результати можуть бути завантажені у PDF одним натиском.
+Results can be downloaded as PDF with one click.
 
-## Можливості Joomla-детектора (всередині CMS)
+## Joomla detector capabilities (inside CMS)
 
-Коли на сайті знайдено CMS Joomla, безпосередньо в картці **Система керування (CMS)**
-під блоком Joomla виводяться (`sections.cms[].joomla`):
+When the Joomla CMS is found on a site, the following is shown directly in the **Content Management System (CMS)** card
+under the Joomla block (`sections.cms[].joomla`):
 
-- **Версія ядра** — за пріоритетом: мета-тег `generator`
+- **Core version** — by priority: `generator` meta tag
   (`Joomla! … Version X.Y.Z`) → `/administrator/manifests/files/joomla.xml`
-  (`<version>`) → `/language/en-GB/en-GB.xml` (`<version>` мовного пакета ядра).
-- **Активний шаблон** — найчастіший slug у `/templates/SLUG/` (+ `templateDetails.xml`:
-  ім'я, версія, автор; службовий `system` ігнорується).
-- **Розширення** — сторонні компоненти (`option=com_X`, крім ядра), модулі
-  (`/modules/mod_X`, `/media/mod_X`), плагіни (`/plugins/GROUP/NAME`) та маркери
-  в коментарях (Modules Anywhere, Sourcerer, Unite Gallery з версією, Joomlatools,
+  (`<version>`) → `/language/en-GB/en-GB.xml` (core language-pack `<version>`).
+- **Active template** — most frequent slug in `/templates/SLUG/` (+ `templateDetails.xml`:
+  name, version, author; the service `system` is ignored).
+- **Extensions** — third-party components (`option=com_X`, excluding core), modules
+  (`/modules/mod_X`, `/media/mod_X`), plugins (`/plugins/GROUP/NAME`) and markers
+  in comments (Modules Anywhere, Sourcerer, Unite Gallery with version, Joomlatools,
   Akeeba, Gantry, T3…).
-- **Адмінка** — проба `/administrator/`: стандартна адреса з формою входу
-  (`com_login` + `passwd`) або помітка «приховано».
+- **Admin panel** — `/administrator/` probe: standard address with a login form
+  (`com_login` + `passwd`) or a "hidden" badge.
 
-## Можливості Drupal-детектора (всередині CMS)
+## Drupal detector capabilities (inside CMS)
 
-Коли на сайті знайдено CMS Drupal, безпосередньо в картці **Система керування (CMS)**
-під блоком Drupal виводяться (`sections.cms[].drupal`):
+When the Drupal CMS is found on a site, the following is shown directly in the **Content Management System (CMS)** card
+under the Drupal block (`sections.cms[].drupal`):
 
-- **Версія ядра** — за пріоритетом: `/core/CHANGELOG.txt` (точна, якщо файл
-  відкрито і містить рядок `Drupal X.Y.Z`) → мета-тег `Generator` / заголовок
-  `X-Generator` (`Drupal 10` — лише мажорна гілка, з відповідною приміткою).
-- **Активна тема** — найчастіший slug у `/sites/…/themes/SLUG/` та `/themes/…/SLUG/`
-  (+ `.info.yml` за спостереженим шляхом: ім'я, версія, опис; зазвичай 403).
-- **Модулі** — сторонні за asset-шляхами (`/sites/…/modules[/contrib]/SLUG/`,
-  `/modules[/contrib]/SLUG/`); модулі ядра відфільтровано, RDF-неймспейси
-  (`purl.org/…/modules/content/`) відсікаються контекстом лапок.
-- **Вхід** — проба `/user/login`: стандартна форма (`user-login-form` / `action="/user/login"`
-  + поле пароля) або помітка «приховано».
+- **Core version** — by priority: `/core/CHANGELOG.txt` (exact, if the file
+  is open and contains a `Drupal X.Y.Z` line) → `Generator` meta tag / `X-Generator`
+  header (`Drupal 10` — major branch only, with a corresponding note).
+- **Active theme** — most frequent slug in `/sites/…/themes/SLUG/` and `/themes/…/SLUG/`
+  (+ `.info.yml` at the observed path: name, version, description; usually 403).
+- **Modules** — third-party ones by asset paths (`/sites/…/modules[/contrib]/SLUG/`,
+  `/modules[/contrib]/SLUG/`); core modules are filtered out, RDF namespaces
+  (`purl.org/…/modules/content/`) are excluded by quote context.
+- **Login** — `/user/login` probe: standard form (`user-login-form` / `action="/user/login"`
+  + password field) or a "hidden" badge.
 
-## Можливості WordPress-детектора (всередині CMS)
+## WordPress detector capabilities (inside CMS)
 
-Коли на сайті знайдено CMS WordPress, безпосередньо в картці **Система керування (CMS)** під блоком WordPress виводяться:
+When the WordPress CMS is found on a site, the following is shown directly in the **Content Management System (CMS)** card under the WordPress block:
 
-- **Версія WordPress** — з надійних джерел у такому порядку (повертається
-  як **структурована інформація**: `version` / `version_min` / `version_source` / `version_note`):
-  1. `<meta name="generator" content="WordPress X.Y.Z">` — найточніший сигнал,
-     генерується динамічно при кожному запиті (але може бути прихований плагіном
-     безпеки). Якщо знайдено — це **точна** версія.
-  2. `/readme.html` — статичний файл ядра, парситься як `<p style="text-align: center"><strong>Version X.Y.Z</strong></p>`
-     (враховує формат із `<strong>`-обгорткою). Якщо знайдено — **точна** версія,
-     хоча файл може бути застарілим.
-  3. Header `Tested up to: X.Y` у `style.css` активної (або parent-) теми — автор
-     теми оновлює це поле після тестування з новою версією WP. Зазвичай
-     співпадає з фактичною версією або відстає на один мінорний реліз. Якщо
-     знайдено — вважаємо **точною** версією, але позначаємо джерело.
-  4. REST API `/wp-json/` — **нижня межа** версії за наявністю endpoints і namespace'ів:
-     `/wp/v2/icons` (≥ 6.6), `/wp/v2/font-collections` (≥ 6.5),
-     `/wp/v2/block-patterns/categories` (≥ 6.0), `/wp/v2/block-patterns/patterns` (≥ 5.9),
-     `/wp/v2/block-directory/search` (≥ 5.5), `/wp/v2/blocks` (≥ 5.0),
-     `/wp/v2/settings` (≥ 4.7),
-     `/wp-abilities/v1` (≥ 7.0), `/wp-block-editor/v1` (≥ 7.0) тощо.
-  5. Twemoji-версія з `/wp-includes/js/wp-emoji-release.min.js` — додаткова
-     нижня межа для WP 6.0+.
-  6. Якщо все одно нічого — UI показує бейдж **«Версія прихована»** з поясненням.
+- **WordPress version** — from reliable sources in this order (returned
+  as **structured info**: `version` / `version_min` / `version_source` / `version_note`):
+  1. `<meta name="generator" content="WordPress X.Y.Z">` — the most accurate signal,
+     generated dynamically on each request (but may be hidden by a security
+     plugin). If found — this is the **exact** version.
+  2. `/readme.html` — a static core file, parsed as `<p style="text-align: center"><strong>Version X.Y.Z</strong></p>`
+     (handles the format with the `<strong>` wrapper). If found — the **exact** version,
+     although the file may be outdated.
+  3. The `Tested up to: X.Y` header in the `style.css` of the active (or parent) theme — the theme
+     author updates this field after testing against a new WP version. Usually it
+     matches the actual version or lags by one minor release. If
+     found — treated as the **exact** version, but the source is labeled.
+  4. REST API `/wp-json/` — a **lower bound** on the version based on the presence of endpoints and namespaces:
+      `/wp/v2/icons` (≥ 6.6), `/wp/v2/font-collections` (≥ 6.5),
+      `/wp/v2/block-patterns/categories` (≥ 6.0), `/wp/v2/block-patterns/patterns` (≥ 5.9),
+      `/wp/v2/block-directory/search` (≥ 5.5), `/wp/v2/blocks` (≥ 5.0),
+      `/wp/v2/settings` (≥ 4.7),
+      `/wp-abilities/v1` (≥ 7.0), `/wp-block-editor/v1` (≥ 7.0), etc.
+  5. Twemoji version from `/wp-includes/js/wp-emoji-release.min.js` — an additional
+     lower bound for WP 6.0+.
+  6. If still nothing — the UI shows a **"Version hidden"** badge with an explanation.
 
-  **Як це відображається в UI (всередині CMS):**
-  - точна версія (`generator` / `readme` / `theme_tested`) — у звичайній плашці
-    з бейджем джерела («мета-тег generator», «файл /readme.html», «поле Tested up to теми»);
-  - лише нижня межа (`rest_api` / `twemoji`) — у помаранчевій плашці з префіксом
-    **«≥»** і поясненням, що точна версія прихована;
-  - повністю прихована — сіра плашка з написом **«прихована»**.
+  **How it is displayed in the UI (inside CMS):**
+  - exact version (`generator` / `readme` / `theme_tested`) — in a regular badge
+    with a source badge ("generator meta tag", "/readme.html file", "theme Tested up to field");
+  - lower bound only (`rest_api` / `twemoji`) — in an orange badge with a **"≥"** prefix
+    and an explanation that the exact version is hidden;
+  - fully hidden — a gray badge reading **"hidden"**.
 
-  ⚠️ Фолбек на `?ver=` у `/wp-includes/js/` НЕ використовується: там часто
-  зустрічається версія **jQuery** (`jquery.min.js?ver=3.7.1`), а не WordPress.
+  ⚠️ The `?ver=` fallback in `/wp-includes/js/` is NOT used: it often contains
+  the **jQuery** version (`jquery.min.js?ver=3.7.1`), not WordPress.
 
-- **Активна тема** — визначається за пріоритетом:
-  1. Клас `wp-child-theme-XXX` у `<body>` (найточніше — це active child-тема).
-  2. Клас `wp-theme-XXX` у `<body>` (active або parent).
+- **Active theme** — determined by priority:
+  1. The `wp-child-theme-XXX` class in `<body>` (most accurate — this is the active child theme).
+  2. The `wp-theme-XXX` class in `<body>` (active or parent).
   3. REST API `/wp-json/` (`themes`, `active_theme`, `stylesheet`).
-  4. Найчастіший slug у HTML.
+  4. Most frequent slug in the HTML.
   
-  Парситься `style.css` за полями `Theme Name`, `Version`, `Author`, `Description`,
-  `Theme URI`, `Author URI`. Підтримується як формат `Theme Name: ...`, так і
-  ` * Theme Name: ...` (WP-коментар).
+  `style.css` is parsed for the `Theme Name`, `Version`, `Author`, `Description`,
+  `Theme URI`, `Author URI` fields. Both the `Theme Name: ...` format and
+  ` * Theme Name: ...` (WP comment) are supported.
 
-- **Parent-тема** — якщо у `style.css` активної теми є заголовок `Template: parent-slug`,
-  додатково завантажується інформація про батьківську тему (ім'я, версія, автор).
+- **Parent theme** — if the active theme's `style.css` has a `Template: parent-slug` header,
+  information about the parent theme is additionally loaded (name, version, author).
 
-- **Конструктор сторінок (page builder)** — повертається масивом усіх виявлених
-  конструкторів (сайт може мати, наприклад, і Elementor, і WPBakery одночасно).
-  **Gutenberg (Block Editor) сюди не входить**: він є ядром WordPress
-  за замовчуванням і часто присутній паралельно з іншими конструкторами,
-  тому його показ лише створював би шум. Сигнали в порядку пріоритету:
-  1. Клас у `<body>` (найточніше).
-  2. Наявність плагіна.
-  3. Характерні сліди в HTML (класи, атрибути, коментарі).
+- **Page builder** — returned as an array of all detected builders
+  (a site may have, for example, both Elementor and WPBakery at the same time).
+  **Gutenberg (Block Editor) is not included here**: it is the WordPress core default
+  and is often present alongside other builders,
+  so showing it would only add noise. Signals in priority order:
+  1. Class in `<body>` (most accurate).
+  2. Plugin presence.
+  3. Characteristic traces in HTML (classes, attributes, comments).
   
-  Підтримуються:
-  - **Elementor** — `elementor-page`, `elementor-default` у body, плагін `elementor`
+  Supported:
+  - **Elementor** — `elementor-page`, `elementor-default` in body, `elementor` plugin
   - **Divi Builder** — `et_pb_builder`, `et_pb_pagebuilder_layout`
-  - **Bricks** — `bricks-is-frontend`, шлях `/wp-content/themes/bricks/`
-  - **Beaver Builder** — `fl-builder`, плагін `beaver-builder-lite-version`
-  - **WPBakery (Visual Composer)** — `wpb_row`, `vc_row`, плагін `js_composer`
+  - **Bricks** — `bricks-is-frontend`, `/wp-content/themes/bricks/` path
+  - **Beaver Builder** — `fl-builder`, `beaver-builder-lite-version` plugin
+  - **WPBakery (Visual Composer)** — `wpb_row`, `vc_row`, `js_composer` plugin
   - **SiteOrigin Page Builder** — `siteorigin-panels`
-  - **Thrive Architect** — плагін `thrive-visual-editor`
-  - **Oxygen** — плагін `oxygen`
+  - **Thrive Architect** — `thrive-visual-editor` plugin
+  - **Oxygen** — `oxygen` plugin
   - **Avada Live (Fusion Builder)** — `/wp-content/themes/Avada/`
-  - **Live Composer** — `dslca-enabled` у body
+  - **Live Composer** — `dslca-enabled` in body
 
-- **WooCommerce** — наявність плагіна, версія, список виявлених платіжних
-  шлюзів (Stripe, PayPal, Square, Braintree, Mollie, Adyen, Razorpay, Klarna,
-  Amazon Pay, Afterpay, WooCommerce Payments тощо) і модулів доставки
+- **WooCommerce** — plugin presence, version, list of detected payment gateways
+  (Stripe, PayPal, Square, Braintree, Mollie, Adyen, Razorpay, Klarna,
+  Amazon Pay, Afterpay, WooCommerce Payments, etc.) and shipping modules
   (UPS, FedEx, Australia Post, Canada Post, Shipment Tracking, Table Rate,
-  Flexible Shipping, Printful, Printify тощо). Додатково перевіряються URL
-  сторінок магазину, кошика, оформлення й особистого кабінету.
+  Flexible Shipping, Printful, Printify, etc.). URLs of the
+  shop, cart, checkout, and account pages are additionally checked.
 
-- **Адреса входу в адмін-панель** (`login_url`) — якщо виявлено WordPress,
-  визначається URL сторінки входу:
-  1. Перевіряються стандартні адреси `/wp-login.php` та `/wp-admin/` (пробний
-     запит без редиректу: `200` з формою `id="loginform"` / `name="log"` +
-     `name="pwd"` + `wp-submit`, або `302` з `Location: …wp-login.php` — якщо
-     є, повертається як `is_default: true` з повним URL).
-  2. Якщо `/wp-admin/` редиректить на кастомний шлях (наприклад, `/my-login/`)
-     — ціль редиректу перевіряється окремим запитом, і якщо там є форма входу,
-     повертається як `is_custom: true` (`detection_method: redirect:/wp-admin/ → …`).
-  3. Інакше сканується HTML на `<a href="…">` з ключовими словами `login` /
-     `admin` / `dashboard` (до 20 кандидатів) — кожен кандидат перевіряється
-     пробним запитом на наявність форми входу (`detection_method: html:…`).
-  4. Якщо стандартні адреси повертають `404` і серед посилань у HTML немає
-     робочої login-сторінки — повертається `is_hidden: true` з повідомленням:
-     > «Адреса за замовчуванням входу в адмін-панель була змінена власником
-     > сайту. Визначити нову адресу дистанційно неможливо — вона прихована
-     > плагіном безпеки (наприклад, WPS Hide Login, iThemes Security та ін.).»
+- **Admin login URL** (`login_url`) — if WordPress is detected,
+  the login page URL is determined:
+  1. The standard addresses `/wp-login.php` and `/wp-admin/` are checked (a trial
+     request without redirects: `200` with an `id="loginform"` / `name="log"` +
+     `name="pwd"` + `wp-submit` form, or `302` with a `Location: …wp-login.php` — if
+     present, it is returned as `is_default: true` with the full URL).
+  2. If `/wp-admin/` redirects to a custom path (e.g. `/my-login/`)
+     — the redirect target is checked with a separate request, and if it contains a login form,
+     it is returned as `is_custom: true` (`detection_method: redirect:/wp-admin/ → …`).
+  3. Otherwise the HTML is scanned for `<a href="…">` links with the keywords `login` /
+     `admin` / `dashboard` (up to 20 candidates) — each candidate is checked
+     with a trial request for a login form (`detection_method: html:…`).
+  4. If the standard addresses return `404` and there is no working
+     login page among the HTML links — `is_hidden: true` is returned with the message:
+     > "The default admin login address was changed by the site owner.
+     > It is not possible to determine the new address remotely — it is hidden
+     > by a security plugin (e.g. WPS Hide Login, iThemes Security, etc.)."
 
-  Структура (`sections.cms[].wordpress.login_url`):
+  Structure (`sections.cms[].wordpress.login_url`):
 
-  | Поле | Опис |
+  | Field | Description |
   |------|------|
-  | `url` | повний URL (`https://example.com/wp-login.php` або кастомний) або `null` якщо приховано |
-  | `path` | шлях (`/wp-login.php` / `/my-secret-login/`) або `null` |
-  | `is_default` | `true` якщо це стандартна адреса |
-  | `is_custom` | `true` якщо знайдено кастомну (за редиректом або посиланням у HTML) |
-  | `is_hidden` | `true` якщо стандартні не відповідають і кастомну не вдалося виявити |
-  | `status_code` | HTTP-код перевірки (`200` / `302` / `404` тощо) |
-  | `note` | людино-зрозуміле пояснення |
+  | `url` | full URL (`https://example.com/wp-login.php` or custom) or `null` if hidden |
+  | `path` | path (`/wp-login.php` / `/my-secret-login/`) or `null` |
+  | `is_default` | `true` if this is the standard address |
+  | `is_custom` | `true` if a custom one was found (via redirect or an HTML link) |
+  | `is_hidden` | `true` if the standard ones do not respond and no custom one could be detected |
+  | `status_code` | HTTP code of the check (`200` / `302` / `404`, etc.) |
+  | `note` | human-readable explanation |
   | `detection_method` | `probe:/wp-login.php (200)` / `redirect:/wp-admin/ → /my-login/` / `html:/my-login/` |
 
-  У фронтенді (всередині картки CMS) — блок **«Адмін-панель»**:
-  - стандартна — зелений бейдж **«стандартна»** + клікабельний URL;
-  - кастомна — синій бейдж **«кастомна»** + клікабельний URL;
-  - прихована — жовтий бейдж **«приховано»** + повідомлення вище.
+  In the frontend (inside the CMS card) — the **"Admin panel"** block:
+  - standard — green **"standard"** badge + clickable URL;
+  - custom — blue **"custom"** badge + clickable URL;
+  - hidden — yellow **"hidden"** badge + the message above.
 
-- **Плагіни** — сканування HTML за шляхами `/wp-content/plugins/PLUGIN_NAME/`
-  (як у Wappalyzer), розпізнавання імен за словником. Версія визначається
-  без зайвих запитів — з `?ver=` asset-URL (`version_source: asset-ver`);
-  спільна `?ver=` у ≥4 плагінів відкидається (це версія ядра WP за замовчуванням).
-  Далі — `readme.txt` (`Stable tag`) та заголовок основного PHP-файла зі строгими
-  multiline-реgex (захист від HTML-фолбеків); timestamp'и та md5-хеші як версії
-  відсікаються. Словниковим плагінам без asset-версії добирається Stable tag
-  з їх readme.txt; Yoast-версія — з HTML-коментаря, AIOSEO — з meta generator;
-  Popup Maker ловиться за `/uploads/pum/`. Плагіни без asset'ів на сторінці ловляться за маркерами
-  в коментарях/атрибутах (`WP_PLUGIN_HTML_MARKERS`: Rank Math, Yoast, CF7…)
-  — пошук лише поза текстовим вмістом, щоб статті про Elementor не давали
-  хибних спрацьовувань. Додатково сканується 1 сторінка запису (через REST),
-  де видно плагіни форм коментарів (напр. Kama SpamBlock). Плагіни, що не лишають
-  жодного сліду (WPS Hide Login — за дизайном; вивід лише на окремих сторінках),
-  дистанційно виявити неможливо.
+- **Plugins** — HTML scan by `/wp-content/plugins/PLUGIN_NAME/` paths
+  (like Wappalyzer), dictionary-based name recognition. The version is determined
+  without extra requests — from `?ver=` asset URLs (`version_source: asset-ver`);
+  a shared `?ver=` across ≥4 plugins is discarded (it is the default WP core version).
+  Next — `readme.txt` (`Stable tag`) and the main PHP file header with strict
+  multiline regex (protection against HTML fallbacks); timestamps and md5 hashes as versions
+  are filtered out. Dictionary plugins without an asset version get their Stable tag
+  from readme.txt; the Yoast version — from the HTML comment, AIOSEO — from the meta generator;
+  Popup Maker is caught via `/uploads/pum/`. Plugins without assets on the page are caught by markers
+  in comments/attributes (`WP_PLUGIN_HTML_MARKERS`: Rank Math, Yoast, CF7…)
+  — search only outside text content, so articles about Elementor do not cause
+  false positives. One additional post page is scanned (via REST),
+  where comment-form plugins are visible (e.g. Kama SpamBlock). Plugins that leave
+  no trace (WPS Hide Login — by design; output only on specific pages)
+  cannot be detected remotely.
 
-Усі ці дані зберігаються в `sections.cms[].wordpress` і рендеряться фронтендом
-всередині картки CMS, а не окремою карткою.
+All this data is stored in `sections.cms[].wordpress` and rendered by the frontend
+inside the CMS card, not as a separate card.
 
-## Захист від СПАМу та ботів
+## Spam and bot protection
 
-Форма пошуку захищена **багаторівневим фільтром** (`src/SpamProtection.php`),
-який не потребує сторонніх сервісів (без reCAPTCHA / hCaptcha) і працює
-на основі лише стандартного PHP та JS:
+The search form is protected by a **multi-layer filter** (`src/SpamProtection.php`),
+which needs no third-party services (no reCAPTCHA / hCaptcha) and works
+on plain PHP and JS only:
 
-| Рівень | Що перевіряється | Що зупиняє |
+| Level | What is checked | What it stops |
 |--------|------------------|------------|
-| 🪤 **Honeypot-поле** | приховане поле `website_url`, яке має лишатись порожнім | тупі боти, що заповнюють усі поля форми |
-| 🔐 **CSRF-токен** | підписаний HMAC-SHA256 токен (`nonce.ts.signature`) з терміном придатності 2 с – 2 год | прямі POST-запити без попереднього завантаження сторінки, повторне використання токенів |
-| 🧠 **JS-маркер** | випадковий 32-симвовий hex-рядок, який додає у форму тільки JS | HTTP-клієнти без JS (curl, скрипти, прості scraper'и) |
-| ⏱ **Час взаємодії** | різниця між часом завантаження сторінки (`form_loaded_at`) та моментом submit | миттєві автоматичні запити одразу після отримання HTML |
-| 🚦 **Rate-limit** | не більше **30 запитів / 10 хв** з однієї IP-адреси; при перевищенні — бан на **10 хв** | brute-force, масове сканування, DDoS на повільні запити |
+| 🪤 **Honeypot field** | hidden `website_url` field that must stay empty | dumb bots that fill in every form field |
+| 🔐 **CSRF token** | signed HMAC-SHA256 token (`nonce.ts.signature`) valid from 2 s to 2 h | direct POST requests without loading the page first, token reuse |
+| 🧠 **JS marker** | random 32-char hex string added to the form by JS only | HTTP clients without JS (curl, scripts, simple scrapers) |
+| ⏱ **Interaction time** | difference between page load time (`form_loaded_at`) and submit time | instant automated requests right after receiving the HTML |
+| 🚦 **Rate limit** | no more than **30 requests / 10 min** from a single IP address; on excess — a **10 min** ban | brute force, mass scanning, DDoS on slow requests |
 
-### Як це працює
+### How it works
 
-1. При кожному завантаженні `index.php` генерується новий **CSRF-токен**
+1. Each load of `index.php` generates a new **CSRF token**
    (`<meta name="csrf-token">` + `<input type="hidden" name="csrf_token">`).
-   Токен — це `random_nonce . timestamp . hmac_sha256(secret, nonce|ts)`.
-2. У форму додається **honeypot-поле** `website_url`, яке через CSS винесено
-   поза екран (`position: absolute; left: -10000px`) і `tabindex="-1"`,
-   тому реальні користувачі його не бачать і не заповнюють.
-3. JS на старті заповнює приховане поле `js_token` випадковим 32-char hex-рядком.
-   Поле `form_loaded_at` вже заповнене на сервері часом рендерингу сторінки.
-4. Під час submit JS додає до запиту `csrf_token`, `hp` (значення honeypot),
-   `js` та `ts` як query-параметри (для SSE) або тіло POST (для `check.php`).
-5. На сервері перед аналізом викликається `SpamProtection::guard($input)`,
-   який у цьому порядку перевіряє honeypot → JS-маркер → CSRF-токен → час
-   → rate-limit. Перша ж помилка повертає `400` / `403` / `429` з
-   локалізованим повідомленням для користувача.
+   The token is `random_nonce . timestamp . hmac_sha256(secret, nonce|ts)`.
+2. A **honeypot field** `website_url` is added to the form, moved off-screen via CSS
+   (`position: absolute; left: -10000px`) with `tabindex="-1"`,
+   so real users never see or fill it.
+3. On startup, JS fills the hidden `js_token` field with a random 32-char hex string.
+   The `form_loaded_at` field is pre-filled on the server with the page render time.
+4. On submit, JS appends `csrf_token`, `hp` (honeypot value),
+   `js` and `ts` as query params (for SSE) or POST body (for `check.php`).
+5. On the server, `SpamProtection::guard($input)` is called before analysis,
+   checking in this order: honeypot → JS marker → CSRF token → timing
+   → rate limit. The first failure returns `400` / `403` / `429` with a
+   localized user-facing message.
 
-### Де зберігаються службові дані
+### Where service data is stored
 
-Усі службові файли створюються автоматично в `cache/security/`:
+All service files are created automatically in `cache/security/`:
 
-- `.secret` — серверний секрет (HMAC) для підпису токенів, права `0600`.
-- `rate_<sha256(ip)>.json` — лічильник запитів за поточне вікно.
-- `banned_<sha256(ip)>.json` — тимчасовий бан для IP, що перевищили ліміт.
+- `.secret` — server secret (HMAC) for signing tokens, `0600` permissions.
+- `rate_<sha256(ip)>.json` — request counter for the current window.
+- `banned_<sha256(ip)>.json` — temporary ban for IPs that exceeded the limit.
 
-Каталог `cache/security/` автоматично захищається власним `.htaccess`
-(`Require all denied`), а також успадковує заборону з батьківського
+The `cache/security/` directory is automatically protected by its own `.htaccess`
+(`Require all denied`), and also inherits the ban from the parent
 `cache/.htaccess`.
 
-### Параметри за замовчуванням
+### Default settings
 
-Усі пороги визначені як `public const` у класі `SpamProtection`, тож їх легко
-підігнати під свої потреби:
+All thresholds are defined as `public const` in the `SpamProtection` class, so they are easy
+to tune to your needs:
 
-| Константа | За замовчуванням | Опис |
-|-----------|------------------|------|
-| `TOKEN_TTL_MIN` | `2` сек | мінімальний час від генерації токена до його використання |
-| `TOKEN_TTL_MAX` | `7200` сек (2 год) | максимальний термін придатності токена |
-| `RATE_LIMIT_WINDOW` | `600` сек (10 хв) | ширина вікна для підрахунку запитів |
-| `RATE_LIMIT_MAX` | `30` | дозволена кількість запитів у вікні з однієї IP |
-| `RATE_LIMIT_BAN` | `600` сек (10 хв) | тривалість бану при перевищенні ліміту |
+| Constant | Default | Description |
+|-----------|----------|------|
+| `TOKEN_TTL_MIN` | `2` s | minimum time from token generation to its use |
+| `TOKEN_TTL_MAX` | `7200` s (2 h) | maximum token lifetime |
+| `RATE_LIMIT_WINDOW` | `600` s (10 min) | width of the request-counting window |
+| `RATE_LIMIT_MAX` | `30` | allowed number of requests per window from one IP |
+| `RATE_LIMIT_BAN` | `600` s (10 min) | ban duration when the limit is exceeded |
 
-### Повідомлення для користувача
+### User-facing messages
 
-Усі помилки захисту локалізовані та зрозумілі:
+All protection errors are localized and clear:
 
-- `honeypot` → «Запит відхилено системою захисту від ботів.»
-- `js_marker` → «Увімкніть JavaScript у браузері для перевірки сайтів.»
-- `token` → «Захищений токен форми невалідний. Оновіть сторінку та спробуйте ще раз.»
-- `timing` → «Запит надіслано занадто швидко. Зачекайте кілька секунд.»
-- `rate_limit` → «Забагато запитів з вашої адреси. Спробуйте пізніше.»
+- `honeypot` → "Request rejected by the bot protection system."
+- `js_marker` → "Enable JavaScript in your browser to check websites."
+- `token` → "The form security token is invalid. Reload the page and try again."
+- `timing` → "The request was sent too quickly. Wait a few seconds."
+- `rate_limit` → "Too many requests from your address. Try again later."
 
-У SSE-режимі помилка приходить як окрема подія `error`, і клієнтський JS
-відображає її у штатному блоці помилок (`status--error`).
+In SSE mode the error arrives as a separate `error` event, and the client-side JS
+renders it in the standard error block (`status--error`).
 
-## Можливості детектора Веб-сервер (єдина секція)
+## Web Server detector capabilities (single section)
 
-Єдина картка **Веб-сервер** (на всю ширину) збирає все середовище виконання.
-Визначення веб-сервера — за HTTP-заголовком `Server` (наприклад, `Server: nginx/1.18.0`),
-`X-Powered-By`, а також за заголовками безпеки. Назва сервера виводиться
-великим «героєм»-блоком.
+The single **Web Server** card (full width) collects the whole runtime environment.
+Web server detection uses the `Server` HTTP header (e.g. `Server: nginx/1.18.0`),
+`X-Powered-By`, as well as security headers. The server name is rendered
+as a large "hero" block.
 
-**Захоплення HTTP-заголовків виконується через cURL** (`src/Detector.php::fetchWithCurl`),
-оскільки вбудований `file_get_contents` з `stream_context` на деяких хостингах
-**не оновлює `$http_response_header`** між послідовними запитами. cURL ізольований
-для кожного запиту, тому заголовки завжди відповідають саме поточному виклику.
+**HTTP header capture is done via cURL** (`src/Detector.php::fetchWithCurl`),
+since the built-in `file_get_contents` with `stream_context` on some hosts
+does **not refresh `$http_response_header`** between consecutive requests. cURL is isolated
+per request, so headers always match exactly the current call.
 
-У секції коротко 6 рядків:
+The section briefly covers 6 lines:
 
-- **Веб-сервер** — назва + версія (nginx, Apache, LiteSpeed, IIS, Caddy, OpenLiteSpeed, Microsoft-IIS, gunicorn, Phusion Passenger). Якщо `Server: cloudflare` чи `Server: cloudfront` — виводиться як `cloudflare`/`cloudfront` з попередженням «Реальний веб-сервер прихований за CDN» і бейджем **«за CDN / приховано»**. Якщо `Server` відсутній, але є `X-Powered-By`, виводиться «IIS (ASP.NET)», «Express» або «PHP-застосунок» з приміткою.
-- **Node.js** — якщо присутній: версія з `X-Powered-By: Express/4.18.2` / `Server: Node.js/20.x` (якщо версія прихована — «присутній (версія прихована)», інакше «не виявлено»).
-- **PHP** — точна версія, лише якщо її прямо розкриває `X-Powered-By: PHP/8.1.34` або `Server: ... PHP/8.1` або строгий `phpinfo`-пробник (`phpinfo.php`/`info.php` `HTTP 200` + `<title>phpinfo`). Якщо приховано — «не виявлено». Додатково перевіряються `HEAD /wp-login.php`, `/index.php`, `/xmlrpc.php`.
-- **Python** — якщо присутній: версія з `Server: gunicorn/20.x` / `Server: uvicorn` / `X-Powered-By: Python/3.11` або інференс за фреймворками Django/Flask (без версії). Інакше «не виявлено».
-- **CDN** — назва провайдера, якщо виявлено за заголовками/HTML: Cloudflare (`CF-RAY`, `Server: cloudflare`), Amazon CloudFront (`X-Amz-Cf-Id`), Fastly (`X-Served-By`), Akamai (`X-Akamai-*`), QUIC.cloud (`X-QUIC`, `Via: quic.cloud`), BunnyCDN (`Server: BunnyCDN`), KeyCDN (`Server: keycdn-engine`), Sucuri (`X-Sucuri-ID`), StackPath / NetDNA (`Server: NetDNA-cache`), Imperva Incapsula (`X-Iinfo`), Varnish (`X-Varnish`, `Via: varnish`). Інакше «не виявлено».
-- **База даних** — яку СУБД використовує сайт (MySQL / MariaDB / PostgreSQL / SQLite / Progress / MSSQL / Oracle) та її версія, якщо сайт її точно розкриває.
+- **Web server** — name + version (nginx, Apache, LiteSpeed, IIS, Caddy, OpenLiteSpeed, Microsoft-IIS, gunicorn, Phusion Passenger). If `Server: cloudflare` or `Server: cloudfront` — shown as `cloudflare`/`cloudfront` with the warning "Real web server hidden behind CDN" and a **"behind CDN / hidden"** badge. If `Server` is missing but `X-Powered-By` exists, "IIS (ASP.NET)", "Express", or "PHP application" is shown with a note.
+- **Node.js** — if present: version from `X-Powered-By: Express/4.18.2` / `Server: Node.js/20.x` (if the version is hidden — "present (version hidden)", otherwise "not detected").
+- **PHP** — exact version, only if directly disclosed by `X-Powered-By: PHP/8.1.34` or `Server: ... PHP/8.1` or a strict `phpinfo` probe (`phpinfo.php`/`info.php` `HTTP 200` + `<title>phpinfo`). If hidden — "not detected". Additionally, `HEAD /wp-login.php`, `/index.php`, `/xmlrpc.php` are checked.
+- **Python** — if present: version from `Server: gunicorn/20.x` / `Server: uvicorn` / `X-Powered-By: Python/3.11` or inference from the Django/Flask frameworks (no version). Otherwise "not detected".
+- **CDN** — provider name, if detected by headers/HTML: Cloudflare (`CF-RAY`, `Server: cloudflare`), Amazon CloudFront (`X-Amz-Cf-Id`), Fastly (`X-Served-By`), Akamai (`X-Akamai-*`), QUIC.cloud (`X-QUIC`, `Via: quic.cloud`), BunnyCDN (`Server: BunnyCDN`), KeyCDN (`Server: keycdn-engine`), Sucuri (`X-Sucuri-ID`), StackPath / NetDNA (`Server: NetDNA-cache`), Imperva Incapsula (`X-Iinfo`), Varnish (`X-Varnish`, `Via: varnish`). Otherwise "not detected".
+- **Database** — which DBMS the site uses (MySQL / MariaDB / PostgreSQL / SQLite / Progress / MSSQL / Oracle) and its version, if the site discloses it exactly.
 
-> Дистанційно точну СУБД можна дізнатися лише якщо сайт її **прямо розкриває**. У більшості випадків сервер ховає цю інформацію.
+> A remote check can learn the exact DBMS only if the site **directly discloses** it. In most cases the server hides this information.
 
-**Джерела БД в порядку пріоритету (перше точне — перемагає):**
+**DB sources in priority order (first exact one wins):**
 
-1. **Відкритий `phpinfo`** — `GET /phpinfo.php` та `/info.php` з перевіркою `HTTP 200` + `<title>phpinfo` / `PHP Version`. Парсяться секції `MySQL`/`MariaDB`/`PostgreSQL`/`SQLite`/`Progress`/`sqlsrv`/`oci8`.
-2. **HTTP-заголовки** `X-DB-Version`, `X-MySQL-Version` тощо (рідко, але точно).
-3. **Витік у HTML** — пошук SQL-помилок з версією (`MySQL server version 8.0.33`, `MariaDB 10.6.12`, `PostgreSQL 15.2` тощо).
-4. **Інференс за CMS/фреймворком** — `WordPress`/`Joomla`/`Drupal` традиційно → `MySQL / MariaDB`; `Laravel`/`Symfony`/`Yii` → кілька СУБД. Це дає ймовірний тип без версії.
-5. **Нічого не знайдено** — «не виявлено».
+1. **Open `phpinfo`** — `GET /phpinfo.php` and `/info.php` with an `HTTP 200` + `<title>phpinfo` / `PHP Version` check. The `MySQL`/`MariaDB`/`PostgreSQL`/`SQLite`/`Progress`/`sqlsrv`/`oci8` sections are parsed.
+2. **HTTP headers** `X-DB-Version`, `X-MySQL-Version`, etc. (rare, but exact).
+3. **HTML leak** — search for SQL errors with a version (`MySQL server version 8.0.33`, `MariaDB 10.6.12`, `PostgreSQL 15.2`, etc.).
+4. **CMS/framework inference** — `WordPress`/`Joomla`/`Drupal` traditionally → `MySQL / MariaDB`; `Laravel`/`Symfony`/`Yii` → several DBMSs. This gives a likely type without a version.
+5. **Nothing found** — "not detected".
 
-**Структура секції (`sections.server`):**
+**Section structure (`sections.server`):**
 
-| Поле | Опис |
+| Field | Description |
 |------|------|
-| `name` | назва веб-сервера |
-| `version` | версія веб-сервера або `null` |
-| `raw` | необроблене значення `Server` |
-| `php_version` | версія PHP або `null` |
-| `php_version_source` | джерело PHP-версії |
-| `node_present` | `true` якщо Node.js виявлено |
-| `node_version` | версія Node.js або `null` |
-| `node_source` | джерело Node.js |
-| `python_present` | `true` якщо Python виявлено |
-| `python_version` | версія Python або `null` |
-| `cdn_provider` | назва CDN або `null` |
-| `cdn_detection` | спосіб виявлення CDN |
-| `dbms` | `MySQL` / `MariaDB` / … або `null` |
-| `db_version` | версія СУБД або `null` |
+| `name` | web server name |
+| `version` | web server version or `null` |
+| `raw` | raw `Server` value |
+| `php_version` | PHP version or `null` |
+| `php_version_source` | PHP version source |
+| `node_present` | `true` if Node.js is detected |
+| `node_version` | Node.js version or `null` |
+| `node_source` | Node.js source |
+| `python_present` | `true` if Python is detected |
+| `python_version` | Python version or `null` |
+| `cdn_provider` | CDN name or `null` |
+| `cdn_detection` | CDN detection method |
+| `dbms` | `MySQL` / `MariaDB` / … or `null` |
+| `db_version` | DBMS version or `null` |
 | `db_source` | `phpinfo` / `X-DB-Version` / `HTML leak` / `CMS inference` |
-| `db_note` | пояснення |
-| `note` | примітка про прихований сервер/CDN |
+| `db_note` | explanation |
+| `note` | note about a hidden server/CDN |
 
-У фронтенді ця секція має клас `card--full` (на всю ширину) та в PDF йде однією секцією «Веб-сервер».
+In the frontend this section has the `card--full` class (full width) and in the PDF it goes as a single "Web Server" section.
 
-## Можливості PageSpeed-блоку (виключно Google PSI)
+## PageSpeed block capabilities (Google PSI only)
 
-Окрема картка **PageSpeed** (`sections.pagespeed`) — це прямі покази
-Google PageSpeed Insights API v5 (Lighthouse), дві стратегії поруч
-для порівняння: `mobile` та `desktop` (паралельні запити через curl_multi):
+A separate **PageSpeed** card (`sections.pagespeed`) — direct scores from
+Google PageSpeed Insights API v5 (Lighthouse), two strategies side by side
+for comparison: `mobile` and `desktop` (parallel requests via curl_multi):
 
-- **Бали категорій (0–100):** Performance, Accessibility, Best Practices, SEO.
-- **Lab-метрики Lighthouse:** FCP, LCP, TBT, CLS, Speed Index, TTI
-  (значення `displayValue` + числове `numericValue`).
-- **Польові дані CrUX** (`loadingExperience`): загальна категорія
-  (`FAST` / `AVERAGE` / `SLOW`) та перцентилі FCP/LCP/CLS/INP, якщо Google
-  має реальні дані для цього URL.
-- При помилці (квота, таймаут, Lighthouse не зміг відрендерити сторінку)
-  картка не зникає, а показує текст помилки та протестований URL.
+- **Category scores (0–100):** Performance, Accessibility, Best Practices, SEO.
+- **Lighthouse lab metrics:** FCP, LCP, TBT, CLS, Speed Index, TTI
+  (`displayValue` + numeric `numericValue` values).
+- **CrUX field data** (`loadingExperience`): overall category
+  (`FAST` / `AVERAGE` / `SLOW`) and FCP/LCP/CLS/INP percentiles, if Google
+  has real data for this URL.
+- On error (quota, timeout, Lighthouse could not render the page)
+  the card does not disappear but shows the error text and the tested URL.
 
-**API-ключ (рекомендовано, безкоштовно):**
+**API key (recommended, free):**
 
-- Без ключа API працює, але з низькою квотою (~100 запитів/день з IP).
-- З безкоштовним ключем — ~25 000 запитів/день, картка не потрібна.
-  Створення: Google Cloud Console → увімкнути `PageSpeed Insights API` →
-  Credentials → API key (обмежити тільки цим API).
-- ВАЖЛИВО: для ключа встановіть **Application restrictions = None**.
-  Запити йдуть із PHP-сервера без `Referer`, тому обмеження
-  «Websites / HTTP referrers» дає помилку
-  `Requests from referer <empty> are blocked`. Обмежуйте ключ лише через
+- Without a key the API works, but with a low quota (~100 requests/day per IP).
+- With a free key — ~25,000 requests/day, no card needed.
+  Creation: Google Cloud Console → enable `PageSpeed Insights API` →
+  Credentials → API key (restrict to this API only).
+- IMPORTANT: set **Application restrictions = None** for the key.
+  Requests come from the PHP server without a `Referer`, so the
+  "Websites / HTTP referrers" restriction produces the error
+  `Requests from referer <empty> are blocked`. Restrict the key only via
   **API restrictions = PageSpeed Insights API**.
-  Якщо ключ заблоковано за referer — бекенд автоматично повторить запит
-  без ключа (з позначкою в картці) замість порожньої помилки.
-- Ключ задається одним із способів (перший знайдений перемагає):
-  `config.php` (рекомендовано: скопіювати `config.example.php` у `config.php`,
-  файл у `.gitignore`), далі env `PAGESPEED_API_KEY`, `$_ENV['PAGESPEED_API_KEY']`
-  або PHP-константа `PAGESPEED_API_KEY`.
+  If the key is blocked by referer — the backend automatically retries the request
+  without the key (with a mark in the card) instead of an empty error.
+- The key is set in one of these ways (first found wins):
+  `config.php` (recommended: copy `config.example.php` to `config.php`,
+  the file is in `.gitignore`), then the `PAGESPEED_API_KEY` env, `$_ENV['PAGESPEED_API_KEY']`
+  or the `PAGESPEED_API_KEY` PHP constant.
 
-**Структура секції (`sections.pagespeed`):**
+**Section structure (`sections.pagespeed`):**
 
-| Поле | Опис |
+| Field | Description |
 |------|------|
-| `tested_url` | протестований URL (фінальний після редиректів) |
-| `fetch_time` | час аналізу PSI |
-| `mobile` / `desktop` | підсекція стратегії: `strategy`, бали `performance` / `accessibility` / `best_practices` / `seo` (0–100), `metrics` (FCP/LCP/TBT/CLS/SI/TTI з `display`+`value`), `field_category` / `field_metrics` (CrUX) або `error` з причиною |
-| `key_fallback` | `true` якщо ключ було відхилено за referer і запит повторено без ключа |
+| `tested_url` | tested URL (final after redirects) |
+| `fetch_time` | PSI analysis time |
+| `mobile` / `desktop` | strategy subsection: `strategy`, `performance` / `accessibility` / `best_practices` / `seo` scores (0–100), `metrics` (FCP/LCP/TBT/CLS/SI/TTI with `display`+`value`), `field_category` / `field_metrics` (CrUX) or `error` with a reason |
+| `key_fallback` | `true` if the key was rejected by referer and the request was retried without a key |
 
-**Особливості:**
+**Notes:**
 
-- Обидві стратегії запитуються паралельно (один час очікування замість
-  подвоєного, curl_multi; без cURL — послідовно); таймаут кожного запиту — 70 с.
-  Якщо одна стратегія впала з помилкою, а інша успішна — картка покаже
-  обидві (помилку inline).
-- У `runAnalysis()` PageSpeed виконується лише коли його запитано
-  (`only=pagespeed` — тоді DNS/WHOIS/HTML-запити взагалі не виконуються).
-  Фронтенд відкриває PSI окремим паралельним стрімом, тож повільний Lighthouse
-  (10–60 с на стратегію) не затримує швидкі блоки.
-- SSE-подія `pagespeed` надсилається своїм стрімом; порядок секцій основного
-  стріму: `location → hosting → whois → cms → frameworks → server`.
-- Кеш інвалідується: `Cache::SCHEMA_VERSION = 28`.
+- Both strategies are requested in parallel (one wait instead of
+  a doubled one, curl_multi; without cURL — sequentially); each request times out after 70 s.
+  If one strategy fails with an error and the other succeeds — the card shows
+  both (the error inline).
+- In `runAnalysis()`, PageSpeed runs only when requested
+  (`only=pagespeed` — then DNS/WHOIS/HTML requests are not performed at all).
+  The frontend opens PSI as a separate parallel stream, so the slow Lighthouse
+  (10–60 s per strategy) does not delay the fast blocks.
+- The `pagespeed` SSE event is sent by its own stream; the main stream section order is:
+  `location → hosting → whois → cms → frameworks → server`.
+- Cache is invalidated by: `Cache::SCHEMA_VERSION = 28`.
 
-## Структура
+## Structure
 
 ```
 mp-site-detect/
-├── index.php              # Головна сторінка з формою та чеклістом прогресу
-├── config.example.php     # Шаблон локальних налаштувань (комітити)
-├── config.php             # Локальні секрети (PAGESPEED_API_KEY) — у .gitignore, НЕ комітити
-├── .gitignore             # Ігнорує config.php та вміст cache/
+├── index.php              # Main page with the form and progress checklist
+├── config.example.php     # Local settings template (commit it)
+├── config.php             # Local secrets (PAGESPEED_API_KEY) — in .gitignore, do NOT commit
+├── .gitignore             # Ignores config.php and cache/ contents
 ├── api/
-│   ├── check.php          # REST-точка повного аналізу (JSON, для зовнішніх клієнтів)
-│   └── stream.php         # SSE-ендпоінт для потокової видачі результатів (only/skip)
+│   ├── check.php          # Full-analysis REST endpoint (JSON, for external clients)
+│   └── stream.php         # SSE endpoint for streaming results (only/skip)
 ├── src/
-│   ├── Detector.php       # Клас виявлення технологій (callback-режим, фільтр only/skip)
-│   ├── Cache.php          # Файловий кеш результатів з версіонуванням схеми
-│   └── SpamProtection.php # CSRF-токени, honeypot, JS-маркер, rate-limit
+│   ├── Detector.php       # Technology detection class (callback mode, only/skip filter)
+│   ├── Cache.php          # File-based results cache with schema versioning
+│   └── SpamProtection.php # CSRF tokens, honeypot, JS marker, rate limit
 ├── assets/
 │   ├── css/
-│   │   └── style.css      # Стилі (BEM)
+│   │   └── style.css      # Styles (BEM)
 │   ├── js/
-│   │   └── app.js         # Форма, два паралельні EventSource-стріми, рендер, PDF
-│   └── fonts/             # Шрифти PTSans для кириличного PDF
-├── cache/                 # Директорія кешу (створиться автоматично, закрита .htaccess)
-│   ├── .htaccess          # Забороняє прямий HTTP-доступ
-│   ├── *.json             # Закешовані результати
-│   └── security/          # Службові дані SpamProtection (токени, rate-limit), .htaccess всередині
+│   │   └── app.js         # Form, two parallel EventSource streams, rendering, PDF
+│   └── fonts/             # PTSans fonts for Cyrillic PDF
+├── cache/                 # Cache directory (created automatically, closed by .htaccess)
+│   ├── .htaccess          # Denies direct HTTP access
+│   ├── *.json             # Cached results
+│   └── security/          # SpamProtection service data (tokens, rate limit), .htaccess inside
 └── readme.md
 ```
 
-## Встановлення
+## Installation
 
-1. Скопіюйте файли у корінь веб-сервера (наприклад, `htdocs` для Apache або папку Laragon).
-2. Переконайтеся, що у PHP увімкнено `allow_url_fopen` (зазвичай увімкнено за замовчуванням).
-3. Переконайтеся, що вимкнено агресивне стиснення для SSE-ендпоінту `api/stream.php`
-   (або використовується модуль `mod_deflate`, який не стискає `text/event-stream`).
-4. Переконайтеся, що директорія `cache/` доступна для запису PHP-процесом.
-   Зазвичай це `www-data` (Linux) або `IUSR` / `Everyone` (Windows). Під час
-   першого запиту автоматично створюється підкаталог `cache/security/` для
-   службових даних захисту від ботів (токени, rate-limit, секрет HMAC).
-5. (Рекомендовано) Скопіюйте `config.example.php` у `config.php` і впишіть
-   безкоштовний ключ Google PageSpeed Insights API (`PAGESPEED_API_KEY`) —
-   без нього блок PageSpeed працює на низькій безключовій квоті.
-   Файл `config.php` вже у `.gitignore` і ніколи не комітиться
-   (див. «[Можливості PageSpeed-блоку](#можливості-pagespeed-блоку-виключно-google-psi)»).
-6. Відкрийте `http://your-host/mp-site-detect/` у браузері.
-   У вашому браузері **має бути ввімкнений JavaScript** — інакше форма
-   відхилить запит (див. «[Захист від СПАМу та ботів](#захист-від-спаму-та-ботів)»).
+1. Copy the files to the web server root (e.g. `htdocs` for Apache or a Laragon folder).
+2. Make sure `allow_url_fopen` is enabled in PHP (usually enabled by default).
+3. Make sure aggressive compression is disabled for the `api/stream.php` SSE endpoint
+   (or the `mod_deflate` module is used, which does not compress `text/event-stream`).
+4. Make sure the `cache/` directory is writable by the PHP process.
+   Usually this is `www-data` (Linux) or `IUSR` / `Everyone` (Windows). On the
+   first request, the `cache/security/` subdirectory is created automatically for
+   bot-protection service data (tokens, rate limit, HMAC secret).
+5. (Recommended) Copy `config.example.php` to `config.php` and enter the
+   free Google PageSpeed Insights API key (`PAGESPEED_API_KEY`) —
+   without it, the PageSpeed block runs on the low keyless quota.
+   `config.php` is already in `.gitignore` and is never committed
+   (see "[PageSpeed block capabilities](#pagespeed-block-capabilities-google-psi-only)").
+6. Open `http://your-host/mp-site-detect/` in a browser.
+   JavaScript **must be enabled** in your browser — otherwise the form
+   will reject the request (see "[Spam and bot protection](#spam-and-bot-protection)").
 
-> **Laragon / Apache**: додаткових налаштувань не потрібно — PHP коректно віддає
-> `text/event-stream` без буферизації, `.htaccess` у `cache/` блокує прямий доступ.
+> **Laragon / Apache**: no extra setup needed — PHP serves
+> `text/event-stream` without buffering, and `.htaccess` in `cache/` blocks direct access.
 >
-> **Nginx**: переконайтеся, що у вашому location-блоці є `proxy_buffering off;`
-> та/або додайте правило для `text/event-stream`. Також надсилається заголовок
-> `X-Accel-Buffering: no` для сумісності. Для захисту `cache/` додайте правило:
+> **Nginx**: make sure your location block contains `proxy_buffering off;`
+> and/or add a rule for `text/event-stream`. The `X-Accel-Buffering: no` header is also sent
+> for compatibility. To protect `cache/`, add this rule:
 >
 > ```nginx
 > location ^~ /mp-site-detect/cache/ {
@@ -445,160 +445,160 @@ mp-site-detect/
 > }
 > ```
 
-## Використання
+## Usage
 
-1. Введіть URL або домен у полі форми.
-2. Натисніть **«Перевірити»**.
-3. У блоці результатів одразу з'явиться чекліст прогресу — кожен модуль
-   перемикається зі стану *«очікування»* → *«активний»* (спінер) → *«готово»* (✓),
-   а відповідна картка даних з'являється на сторінці без перезавантаження.
-4. Якщо для домену вже є закешований результат — він з'явиться миттєво,
-   а у заголовку з'явиться бейдж **«З кешу»** з відносним віком запису
-   (щойно / N хв тому / N год тому / N д тому).
-5. Кнопка **«Оновити»** біля PDF дозволяє примусово ігнорувати кеш
-   та виконати свіжий аналіз.
-6. Після завершення основного аналізу активується кнопка **«Завантажити PDF»**.
-   Картка PageSpeed може довантажитись пізніше — якщо вона вже на екрані,
-   PDF включатиме і її.
+1. Enter a URL or domain in the form field.
+2. Click **"Check"**.
+3. A progress checklist appears in the results block right away — each module
+   switches from *"pending"* → *"active"* (spinner) → *"done"* (✓),
+   and the corresponding data card appears on the page without reloading.
+4. If there is already a cached result for the domain — it appears instantly,
+   and a **"From cache"** badge appears in the header with the relative age of the record
+   (just now / N min ago / N hours ago / N days ago).
+5. The **"Refresh"** button next to the PDF forces the cache to be ignored
+   and runs a fresh analysis.
+6. After the main analysis finishes, the **"Download PDF"** button becomes active.
+   The PageSpeed card may load later — if it is already on screen,
+   the PDF will include it too.
 
-## Як це працює
+## How it works
 
-### Асинхронність (SSE)
+### Asynchrony (SSE)
 
-Замість одного великого запиту, що чекає на повний аналіз, використовується
-**Server-Sent Events** через `api/stream.php`. PHP виконує кроки аналізу послідовно
-(`src/Detector.php::analyzeWithCallback`) і після кожного завершеного модуля
-відправляє клієнту SSE-подію з даними:
+Instead of one large request waiting for the full analysis, **Server-Sent Events** are used
+via `api/stream.php`. PHP runs the analysis steps sequentially
+(`src/Detector.php::analyzeWithCallback`) and after each completed module
+sends the client an SSE event with data:
 
-| Подія       | Коли надсилається                              |
+| Event       | When it is sent                              |
 |-------------|------------------------------------------------|
-| `cached`    | на початку стріму, якщо результат взято з кешу |
-| `meta`      | одразу після визначення IP-адреси              |
-| `location`  | після успішного запиту до ip-api.com           |
-| `hosting`   | разом з `location` (з того ж запиту)           |
-| `whois`     | після запиту до who-dat.as93.net               |
-| `cms`       | після детекції CMS (з вбудованими WordPress-деталями, якщо є) |
-| `frameworks`| після аналізу HTML та заголовків               |
-| `server`    | після розбору HTTP-заголовків — єдина секція Веб-сервер (веб-сервер + Node.js/PHP/Python + CDN + база даних) |
-| `pagespeed` | окремим паралельним стрімом — покази Google PSI (Lighthouse mobile+desktop), 10–120 с |
-| `complete`  | фінальна подія з повним результатом (у кожному стрімі своя) |
-| `error`     | у разі помилки (помилка PageSpeed-стріму показується в його картці, а не банером) |
+| `cached`    | at the start of the stream, if the result came from cache |
+| `meta`      | right after the IP address is determined              |
+| `location`  | after a successful request to ip-api.com           |
+| `hosting`   | together with `location` (from the same request)           |
+| `whois`     | after the request to who-dat.as93.net               |
+| `cms`       | after CMS detection (with embedded WordPress details, if any) |
+| `frameworks`| after HTML and header analysis               |
+| `server`    | after parsing HTTP headers — single Web Server section (web server + Node.js/PHP/Python + CDN + database) |
+| `pagespeed` | via a separate parallel stream — Google PSI scores (Lighthouse mobile+desktop), 10–120 s |
+| `complete`  | final event with the full result (each stream has its own) |
+| `error`     | on error (a PageSpeed-stream error is shown in its card, not as a banner) |
 
-**Паралельні стріми.** Фронтенд відкриває одразу два `EventSource`:
-основний (`skip=pagespeed` — швидкі блоки: IP, локація, хостинг, WHOIS, CMS,
-фреймворки, сервер) і PageSpeed (`only=pagespeed` — тільки Lighthouse).
-Швидкі картки з'являються за 1–2 с і не чекають повільного PSI.
-Параметри `only` / `skip` (comma-separated) підтримуються бекендом
-(`Detector::analyzeWithCallback($emit, $only, $skip)`): непотрібні секції
-навіть не виконуються (без зайвих HTTP-запитів). PageSpeed-стрім кешується
-окремо (`<domain>.pagespeed`), тож паралельні записи не затирають одне одного.
-Без `only`/`skip` — колишня поведінка: все в одному стрімі.
+**Parallel streams.** The frontend opens two `EventSource`s at once:
+the main one (`skip=pagespeed` — fast blocks: IP, location, hosting, WHOIS, CMS,
+frameworks, server) and PageSpeed (`only=pagespeed` — Lighthouse only).
+Fast cards appear in 1–2 s without waiting for the slow PSI.
+The `only` / `skip` params (comma-separated) are supported by the backend
+(`Detector::analyzeWithCallback($emit, $only, $skip)`): unneeded sections
+are not even executed (no extra HTTP requests). The PageSpeed stream is cached
+separately (`<domain>.pagespeed`), so parallel writes do not overwrite each other.
+Without `only`/`skip` — the former behavior: everything in one stream.
 
-На фронтенді (`assets/js/app.js`) два слухачі `EventSource` (основний + PageSpeed)
-на кожну подію оновлюють відповідну картку та відмічають крок у чеклісті.
-Таким чином користувач бачить перші результати за 1–2 секунди
-(IP, локація, хостинг), не чекаючи повного циклу аналізу, а картка PageSpeed
-домалюється, щойно Lighthouse відповість. `complete` основного стріму не
-затирає вже отриманий PageSpeed (мердж), а `complete` PageSpeed-стріму
-не чіпає основний результат.
+In the frontend (`assets/js/app.js`), two `EventSource` listeners (main + PageSpeed)
+update the corresponding card and check off the checklist step on each event.
+This way the user sees the first results in 1–2 seconds
+(IP, location, hosting) without waiting for the full analysis cycle, and the PageSpeed card
+is drawn as soon as Lighthouse responds. The main stream's `complete` does not
+overwrite the already received PageSpeed (merge), and the PageSpeed stream's `complete`
+does not touch the main result.
 
-Старий `POST api/check.php` залишено для зовнішніх клієнтів, яким потрібен
-єдиний JSON-відповідь замість потоку.
+The legacy `POST api/check.php` is kept for external clients that need
+a single JSON response instead of a stream.
 
-### Кеш результатів
+### Results cache
 
-Щоб зменшити навантаження на сторонні API (`ip-api.com`, `who-dat.as93.net`)
-та прискорити повторні запити, реалізовано простий файловий кеш
-(`src/Cache.php`) — **без використання бази даних**.
+To reduce load on third-party APIs (`ip-api.com`, `who-dat.as93.net`)
+and speed up repeat requests, a simple file cache is implemented
+(`src/Cache.php`) — **without using a database**.
 
-- Результат зберігається у файлі `cache/<sha256>.json`.
-- Ключ — SHA-256 від нормалізованого домену (без `www`, без scheme, без шляху).
-- PageSpeed-стрім (`only=pagespeed`) кешується окремо — `cache/<sha256>.json`
-  від ключа `<domain>.pagespeed`, тож паралельні стріми не затирають записи
-  одне одного, а повторний візит миттєво показує і PSI-блок.
-- TTL за замовчуванням — **24 години** (можна перевизначити параметром `ttl=`).
-- Домени `example.com`, `https://www.example.com/path` зводяться до одного ключа.
-- Директорія `cache/` захищена від прямого HTTP-доступу через `.htaccess`.
-- **Версіонування схеми** (`schema_version`): при несумісних змінах структури
-  даних константа `Cache::SCHEMA_VERSION` інкрементується — старі записи
-  автоматично вважаються невалідними і перезаписуються. Поточна версія: **29**
-  (прибрано окремі `sections.site`, `sections.technologies`, `sections.wordpress` — тепер `sections.cms[].wordpress`; `sections.cdn`/`sections.db` об'єднано в `sections.server`; додано Node.js/Python у `sections.server`; додано `sections.pagespeed` — Google PSI mobile+desktop; з `page_builders` прибрано Gutenberg).
+- The result is stored in a `cache/<sha256>.json` file.
+- The key is the SHA-256 of the normalized domain (no `www`, no scheme, no path).
+- The PageSpeed stream (`only=pagespeed`) is cached separately — `cache/<sha256>.json`
+  for the `<domain>.pagespeed` key, so parallel streams do not overwrite each other's
+  records, and a repeat visit instantly shows the PSI block too.
+- Default TTL — **24 hours** (can be overridden with the `ttl=` param).
+- The domains `example.com`, `https://www.example.com/path` resolve to one key.
+- The `cache/` directory is protected from direct HTTP access via `.htaccess`.
+- **Schema versioning** (`schema_version`): on incompatible structure changes
+  the `Cache::SCHEMA_VERSION` constant is incremented — old records
+  are automatically treated as invalid and overwritten. Current version: **29**
+  (removed standalone `sections.site`, `sections.technologies`, `sections.wordpress` — now `sections.cms[].wordpress`; `sections.cdn`/`sections.db` merged into `sections.server`; added Node.js/Python to `sections.server`; added `sections.pagespeed` — Google PSI mobile+desktop; removed Gutenberg from `page_builders`).
 
-**Алгоритм:**
+**Algorithm:**
 
-1. Приходить запит `?url=example.com`.
-2. Backend дивиться, чи є у `cache/` файл для домену і чи не прострочений він.
-3. Якщо так — подія `cached` надсилається першою, а далі всі секції
-   відтворюються з кешу без звернень до сторонніх сервісів.
-4. Якщо ні — виконується повний аналіз, результат зберігається у кеш
-   і вкінці стріму надсилається `complete`.
+1. A `?url=example.com` request arrives.
+2. The backend checks whether `cache/` has a file for the domain and whether it is expired.
+3. If so — the `cached` event is sent first, then all sections are
+   replayed from cache without calling third-party services.
+4. If not — a full analysis runs, the result is stored in cache,
+   and `complete` is sent at the end of the stream.
 
-**Параметри запиту:**
+**Request parameters:**
 
-| Параметр | Опис                                                                  |
+| Parameter | Description                                                                  |
 |----------|-----------------------------------------------------------------------|
-| `url`    | URL або домен для аналізу (обов'язково)                               |
-| `force`  | `1` — ігнорувати кеш і виконати свіжий аналіз (опціонально)          |
-| `ttl`    | TTL кешу в секундах (опціонально, за замовчуванням `86400` = 24 год)  |
-| `only`   | виконати лише ці секції, напр. `only=pagespeed` (сторінка відкриває цей стрім паралельно) |
-| `skip`   | пропустити секції, напр. `skip=pagespeed` (основний стрім сторінки) |
-| `csrf_token` | захищений токен із форми (додається автоматично JS)              |
-| `hp`     | значення honeypot-поля (має бути порожнім)                           |
-| `js`     | 32-char hex-маркер виконання JS                                       |
-| `ts`     | час завантаження форми у мілісекундах (Unix timestamp × 1000)         |
+| `url`    | URL or domain to analyze (required)                               |
+| `force`  | `1` — ignore cache and run a fresh analysis (optional)          |
+| `ttl`    | cache TTL in seconds (optional, defaults to `86400` = 24 h)  |
+| `only`   | run only these sections, e.g. `only=pagespeed` (the page opens this stream in parallel) |
+| `skip`   | skip sections, e.g. `skip=pagespeed` (the page's main stream) |
+| `csrf_token` | secured form token (appended automatically by JS)              |
+| `hp`     | honeypot field value (must be empty)                           |
+| `js`     | 32-char hex JS-execution marker                                       |
+| `ts`     | form load time in milliseconds (Unix timestamp × 1000)         |
 
-Усі запити (і POST, і GET/SSE) **повинні** передавати коректні CSRF-токен
-та JS-маркер, інакше запит буде відхилено системою захисту (див.
-розділ «[Захист від СПАМу та ботів](#захист-від-спаму-та-ботів)»).
+All requests (both POST and GET/SSE) **must** pass a valid CSRF token
+and JS marker, otherwise the request is rejected by the protection system (see
+"[Spam and bot protection](#spam-and-bot-protection)").
 
-**Приклади:**
+**Examples:**
 
 ```
-GET /api/stream.php?url=example.com&csrf_token=…&js=…&ts=…      # звичайний запит (з кешем)
-GET /api/stream.php?url=example.com&force=1&csrf_token=…&js=…&ts=…  # примусово свіжий аналіз
-GET /api/stream.php?url=example.com&ttl=300&csrf_token=…&js=…&ts=…  # 5 хв TTL
-POST /api/check.php  url=example.com  csrf_token=… js=… ts=…    # JSON-відповідь, з кешем
-POST /api/check.php  url=example.com  force=1 csrf_token=…       # JSON-відповідь, без кешу
+GET /api/stream.php?url=example.com&csrf_token=…&js=…&ts=…      # regular request (with cache)
+GET /api/stream.php?url=example.com&force=1&csrf_token=…&js=…&ts=…  # force fresh analysis
+GET /api/stream.php?url=example.com&ttl=300&csrf_token=…&js=…&ts=…  # 5 min TTL
+POST /api/check.php  url=example.com  csrf_token=… js=… ts=…    # JSON response, with cache
+POST /api/check.php  url=example.com  force=1 csrf_token=…       # JSON response, no cache
 ```
 
-У реальному коді всі параметри захисту додаються автоматично
-фронтендом (`assets/js/app.js`) — клієнту їх передавати вручну не потрібно.
+In real code, all protection params are appended automatically
+by the frontend (`assets/js/app.js`) — the client does not need to pass them manually.
 
-**Очищення кешу:** у директорії `cache/` достатньо видалити файли `*.json`,
-або викликати програмно:
+**Clearing the cache:** in the `cache/` directory, just delete the `*.json` files,
+or call programmatically:
 
 ```php
 $cache = new \App\Cache();
-$cache->clear();              // видалити все
-$cache->cleanExpired();       // видалити лише прострочені
-$cache->delete('example.com');// видалити один домен
+$cache->clear();              // delete everything
+$cache->cleanExpired();       // delete only expired
+$cache->delete('example.com');// delete one domain
 ```
 
-**Очищення даних захисту від ботів:** у підкаталозі `cache/security/` зберігаються
-лічильники запитів (`rate_*.json`), тимчасові бани (`banned_*.json`) і секрет
-підпису токенів (`.secret`). За потреби їх можна видалити вручну або
-програмно:
+**Clearing bot-protection data:** the `cache/security/` subdirectory stores
+request counters (`rate_*.json`), temporary bans (`banned_*.json`), and the token-signing
+secret (`.secret`). If needed, they can be deleted manually or
+programmatically:
 
 ```php
 $spam = new \App\SpamProtection();
-$spam->resetRateLimit('203.0.113.42'); // зняти ліміт і бан для конкретної IP
+$spam->resetRateLimit('203.0.113.42'); // lift the limit and ban for a specific IP
 ```
 
-## Використані зовнішні сервіси
+## Third-party services used
 
-| Сервіс | Призначення |
+| Service | Purpose |
 |--------|------------|
-| [ip-api.com](http://ip-api.com) | Геолокація та ISP за IP |
-| [who-dat.as93.net](https://who-dat.as93.net) | WHOIS-інформація про домен |
-| [PageSpeed Insights API](https://developers.google.com/speed/docs/insights/v5/get-started) | Покази Lighthouse (mobile + desktop), потрібен безкоштовний API-ключ для повної квоти |
-| [jsPDF](https://github.com/parallax/jsPDF) (CDN) | Генерація PDF |
+| [ip-api.com](http://ip-api.com) | Geolocation and ISP by IP |
+| [who-dat.as93.net](https://who-dat.as93.net) | WHOIS info about the domain |
+| [PageSpeed Insights API](https://developers.google.com/speed/docs/insights/v5/get-started) | Lighthouse scores (mobile + desktop), a free API key is needed for the full quota |
+| [jsPDF](https://github.com/parallax/jsPDF) (CDN) | PDF generation |
 
-## Запуск локально (Laragon)
+## Running locally (Laragon)
 
-Сервіс створено для роботи в середовищі Laragon. Покладіть папку `mp-site-detect`
-у `F:\laragon\www\ai\` і відкрийте `http://mp-site-detect.test/` (або відповідний
-ваш віртуальний хост).
+The service is built to run in the Laragon environment. Place the `mp-site-detect` folder
+in `F:\laragon\www\ai\` and open `http://mp-site-detect.test/` (or your
+corresponding virtual host).
 
-## Ліцензія
+## License
 
-Вільне використання.
+Free to use.

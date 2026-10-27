@@ -6,7 +6,7 @@ require_once __DIR__ . '/../src/Detector.php';
 require_once __DIR__ . '/../src/Cache.php';
 require_once __DIR__ . '/../src/SpamProtection.php';
 
-// Локальні налаштування (config.php у .gitignore): PAGESPEED_API_KEY та інше.
+// Local settings (config.php in .gitignore): PAGESPEED_API_KEY and more.
 if (is_file(__DIR__ . '/../config.php')) {
     require_once __DIR__ . '/../config.php';
 }

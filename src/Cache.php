@@ -5,101 +5,101 @@ declare(strict_types=1);
 namespace App;
 
 /**
- * Простий файловий кеш для результатів аналізу сайтів.
- * Кожен домен зберігається у окремому JSON-файлі в директорії кешу.
- * Ключ — SHA-256 хеш від нормалізованого домену (без www, без scheme, без шляху).
+ * Simple file cache for site analysis results.
+ * Each domain is stored in a separate JSON file in the cache directory.
+ * The key is a SHA-256 hash of the normalized domain (no www, no scheme, no path).
  *
- * Використовується, щоб зменшити навантаження на сторонні API (ip-api.com,
- * who-dat.as93.net) та прискорити повторні запити для тих самих доменів.
+ * Used to reduce load on third-party APIs (ip-api.com,
+ * who-dat.as93.net) and to speed up repeat requests for the same domains.
  */
 final class Cache
 {
-    /** @var int TTL за замовчуванням — 24 години. */
+    /** @var int Default TTL — 24 hours. */
     public const DEFAULT_TTL = 86400;
 
     /**
-     * Версія формату кешу. Інкрементується при несумісних змінах
-     * структури даних — старі записи будуть автоматично відкинуті.
+     * Cache format version. Incremented on incompatible changes
+     * to the data structure — old entries are automatically discarded.
      *
-     * - 6: розширено дані WordPress (`version_min`, `version_source`, `version_note`)
-     *      у `sections.wordpress`. Старі записи з лише `version` вважаються
-     *      неповними і перезаписуються.
-     * - 7: додано секцію `sections.php` з параметрами PHP-середовища
-     *      (версія, SAPI, конфіг, ліміти, OPcache, cURL, розширення).
-     *      Старі записи без цієї секції вважаються неповними і перезаписуються.
-     * - 8: секцію `sections.php` переведено на дистанційну перевірку
-     *      віддаленого сайту (раніше показувала локальний phpinfo сервісу).
-     *      Формат змінився на `remote/detected/version/...` — старі записи
-     *      з `available/core/limits` вважаються застарілими.
-     * - 9: додано поле `available` для зворотної сумісності зі старим JS
-     *      (v3), щоб не показувало «не виявлено в поточному середовищі»
-     *      для коректно виявлених сайтів на зразок certus.com.ua.
-     * - 10: PHP-детектор враховує CMS/фреймворки/технології (напр., WordPress
-     *       → гарантовано PHP) — інакше сайти, що ховають X-Powered-By,
-     *       показували «не виявлено» / «невідомо» замість «виявлено, версія прихована».
-     * - 11: виправлено хибне спрацювання phpinfo-проби (kyiv-service.com.ua,
-     *       laravel.com повертали 404 з випадковим словом "phpinfo" у тілі
-     *       і помилково маркувались як витік) — тепер вимагається HTTP 200
-     *       + строгі маркери <title>phpinfo / PHP Version.
-     * - 12: прибрано окрему секцію `sections.php` — точна версія PHP
-     *       (якщо її розкриває X-Powered-By/Server) тепер показується
-     *       безпосередньо в секції `sections.server` (поля `php_version`,
-     *       `php_version_source`), без окремого блоку.
-     * - 13: розширено детекцію PHP-версії в секції сервера — якщо на
-     *       головній заголовок приховано, додатково перевіряються
-     *       /wp-login.php, /index.php, /xmlrpc.php (HEAD) та строгий
-     *       phpinfo-пробник; додано підтримку X-PHP-Version / Server з PHP.
-     * - 14: додано секцію `sections.db` — дистанційне визначення СУБД
-     *       (MySQL/MariaDB/PostgreSQL/SQLite/Progress/MSSQL/Oracle) та її
-     *       версії за phpinfo / заголовками / витоком SQL-помилок / CMS-інференсом;
-     *       прибрано застарілу `sections.php`.
-     * - 15: додано `sections.wordpress.login_url` — визначення адреси входу
-     *       в адмін-панель WordPress (`/wp-login.php` / `/wp-admin/` або
-     *       кастомна, якщо вдалося виявити; інакше — помітка «приховано»).
-     * - 16: оптимізовано структуру секцій — прибрано окремі `sections.site`,
-     *       `sections.technologies`, `sections.wordpress` (тепер всередині
-     *       `sections.cms[].wordpress`), `sections.cdn` та `sections.db`
-     *       (тепер всередині `sections.server`: cdn_provider/dbms/…),
-     *       додано Node.js/Python у `sections.server`; секція Веб-сервер
-     *       тепер єдина на всю ширину з 6 рядками (веб-сервер, Node.js, PHP,
-     *       Python, CDN, база даних).
-     * - 17: виправлено детекцію Gutenberg/Elementor — розширено HTML-сигнали
-     *       Gutenberg (`wp-block-library`, `is-layout-flow`, `alignwide` тощо),
-     *       додано fallback Gutenberg для WordPress без Classic Editor та
-     *       резервне визначення WordPress через /wp-json/ коли HTML — антибот-заглушка.
-     * - 18: виправлено WHOIS для делегованих зон .ua (lviv.ua, тощо) — додано
-     *       fallback через TCP WHOIS (whois.ua → whois.uar.net) коли RDAP
-     *       hostmaster.ua повертає 501/502 (cityhouse.lviv.ua).
-     * - 19: прибрано примітку про CMS у секції БД («Сайт працює на CMS…») на прохання замовника.
-     * - 20: точність CMS/фреймворків у стилі Wappalyzer — зважені strong/weak-сигнали,
-     *       точний матчинг (межі слів, очищення base64-шуму), взаємовиключення CMS;
-     *       виправлено хибні MODX/Squarespace/ASP.NET на WordPress-сайтах (equides.com.ua).
-     * - 21: WP-плагіни як у Wappalyzer — версія з ?ver= asset-URL без зайвих запитів,
-     *       фільтр спільної ?ver= ядра WP, строгі readme/PHP-заголовки, +20 slug'ів у словнику
-     *       (WPML, Slider Revolution, SiteGround Optimizer тощо); веб-сервер — розбір
-     *       складених Server-заголовків (Apache/2.4.52 (Ubuntu)), нормалізація назв
-     *       (IIS/OpenResty), лише заголовки фінальної відповіді, захоплення Via/X-Server.
-     * - 22: маркери плагінів без asset'ів (Rank Math за коментарями), +1 сабпейдж
-     *       (сторінка запису через REST) для плагінів форм коментарів (Kama SpamBlock).
-     * - 23: версії marker-плагінів — readme.txt Stable tag для словникових slug'ів,
-     *       Yoast-версія з HTML-коментаря, AIOSEO-версія з meta generator,
-     *       мапа uploads-директорій (pum → popup-maker).
-     * - 24: серверна секція — HTTP-протокол (h1/h2/h3), вторинні токени Server
-     *       (OpenSSL/…), PHP-інференс (PHPSESSID/CMS), показ Via/X-Server.
-     * - 25: деталі Joomla в картці CMS (sections.cms[].joomla) — версія ядра
-     *       (generator/manifest/language-xml), шаблон (templateDetails.xml),
-     *       розширення (компоненти/модулі/плагіни/маркери коментарів), адмінка.
-     * - 26: деталі Drupal в картці CMS (sections.cms[].drupal) — версія
-     *       (CHANGELOG/generator/X-Generator), тема (.info.yml), модулі за
-     *       asset-шляхами (ядро відфільтровано), вхід /user/login.
-     * - 27: додано секцію `sections.pagespeed` — покази Google PageSpeed
-     *       Insights (Lighthouse mobile: бали performance/accessibility/
-     *       best-practices/seo + метрики FCP/LCP/TBT/CLS/SI/TTI + CrUX field).
-     * - 28: `sections.pagespeed` — дві стратегії поруч (`mobile` + `desktop`,
-     *       паралельні запити через curl_multi), структура
+     * - 6: extended WordPress data (`version_min`, `version_source`, `version_note`)
+     *      in `sections.wordpress`. Old entries with only `version` are considered
+     *      incomplete and overwritten.
+     * - 7: added `sections.php` with PHP environment parameters
+     *      (version, SAPI, config, limits, OPcache, cURL, extensions).
+     *      Old entries without this section are considered incomplete and overwritten.
+     * - 8: `sections.php` switched to remote checking of the
+     *      remote site (previously showed the service's local phpinfo).
+     *      Format changed to `remote/detected/version/...` — old entries
+     *      with `available/core/limits` are considered outdated.
+     * - 9: added `available` field for backward compatibility with old JS
+     *      (v3), so it no longer shows "not detected in current environment"
+     *      for correctly detected sites like certus.com.ua.
+     * - 10: PHP detector accounts for CMS/frameworks/technologies (e.g. WordPress
+     *       → guaranteed PHP) — otherwise sites hiding X-Powered-By
+     *       showed "not detected" / "unknown" instead of "detected, version hidden".
+     * - 11: fixed phpinfo-probe false positive (kyiv-service.com.ua,
+     *       laravel.com returned 404 with a random "phpinfo" word in the body
+     *       and were wrongly marked as a leak) — now requires HTTP 200
+     *       + strict <title>phpinfo / PHP Version markers.
+     * - 12: removed the separate `sections.php` section — the exact PHP version
+     *       (if exposed via X-Powered-By/Server) is now shown
+     *       directly in the `sections.server` section (`php_version`,
+     *       `php_version_source` fields), without a separate block.
+     * - 13: extended PHP-version detection in the server section — if the
+     *       homepage header is hidden, additionally checked are
+     *       /wp-login.php, /index.php, /xmlrpc.php (HEAD) plus a strict
+     *       phpinfo probe; added support for X-PHP-Version / Server with PHP.
+     * - 14: added `sections.db` section — remote DBMS detection
+     *       (MySQL/MariaDB/PostgreSQL/SQLite/Progress/MSSQL/Oracle) and its
+     *       version via phpinfo / headers / SQL-error leaks / CMS inference;
+     *       removed the legacy `sections.php`.
+     * - 15: added `sections.wordpress.login_url` — WordPress admin login
+     *       address detection (`/wp-login.php` / `/wp-admin/` or a
+     *       custom one if detected; otherwise marked as "hidden").
+     * - 16: streamlined section structure — removed separate `sections.site`,
+     *       `sections.technologies`, `sections.wordpress` (now inside
+     *       `sections.cms[].wordpress`), `sections.cdn` and `sections.db`
+     *       (now inside `sections.server`: cdn_provider/dbms/…),
+     *       added Node.js/Python to `sections.server`; the Web Server section
+     *       is now a single full-width card with 6 rows (web server, Node.js, PHP,
+     *       Python, CDN, database).
+     * - 17: fixed Gutenberg/Elementor detection — extended HTML signals for
+     *       Gutenberg (`wp-block-library`, `is-layout-flow`, `alignwide`, etc.),
+     *       added Gutenberg fallback for WordPress without Classic Editor and
+     *       WordPress fallback detection via /wp-json/ when HTML is an antibot stub.
+     * - 18: fixed WHOIS for delegated .ua zones (lviv.ua, etc.) — added
+     *       fallback via TCP WHOIS (whois.ua → whois.uar.net) when RDAP at
+     *       hostmaster.ua returns 501/502 (cityhouse.lviv.ua).
+     * - 19: removed the CMS note in the DB section ("Site runs on CMS…") at the customer's request.
+     * - 20: Wappalyzer-style CMS/framework accuracy — weighted strong/weak signals,
+     *       exact matching (word boundaries, base64-noise cleanup), mutually exclusive CMS;
+     *       fixed false MODX/Squarespace/ASP.NET on WordPress sites (equides.com.ua).
+     * - 21: WP plugins like in Wappalyzer — version from ?ver= asset URLs without extra requests,
+     *       shared WP-core ?ver= filter, strict readme/PHP headers, +20 slugs in the dictionary
+     *       (WPML, Slider Revolution, SiteGround Optimizer, etc.); web server — parsing
+     *       compound Server headers (Apache/2.4.52 (Ubuntu)), name normalization
+     *       (IIS/OpenResty), only final-response headers, Via/X-Server capture.
+     * - 22: plugin markers without assets (Rank Math via comments), +1 subpage
+     *       (post page via REST) for comment-form plugins (Kama SpamBlock).
+     * - 23: marker-plugin versions — readme.txt Stable tag for dictionary slugs,
+     *       Yoast version from HTML comment, AIOSEO version from meta generator,
+     *       uploads-directory map (pum → popup-maker).
+     * - 24: server section — HTTP protocol (h1/h2/h3), secondary Server tokens
+     *       (OpenSSL/…), PHP inference (PHPSESSID/CMS), Via/X-Server display.
+     * - 25: Joomla details in the CMS card (sections.cms[].joomla) — core version
+     *       (generator/manifest/language-xml), template (templateDetails.xml),
+     *       extensions (components/modules/plugins/comment markers), admin panel.
+     * - 26: Drupal details in the CMS card (sections.cms[].drupal) — version
+     *       (CHANGELOG/generator/X-Generator), theme (.info.yml), modules by
+     *       asset paths (core filtered out), /user/login entry.
+     * - 27: added `sections.pagespeed` section — Google PageSpeed
+     *       Insights scores (Lighthouse mobile: performance/accessibility/
+     *       best-practices/seo scores + FCP/LCP/TBT/CLS/SI/TTI metrics + CrUX field).
+     * - 28: `sections.pagespeed` — two strategies side by side (`mobile` + `desktop`,
+     *       parallel requests via curl_multi), structure
      *       `{tested_url, fetch_time, mobile:{...}, desktop:{...}, key_fallback}`.
-     * - 29: з `page_builders` прибрано Gutenberg (Block Editor) — він у ядрі
-     *       WP за замовчуванням і створював шум поруч з Elementor.
+     * - 29: removed Gutenberg (Block Editor) from `page_builders` — it is in WP core
+     *       by default and added noise next to Elementor.
      */
     public const SCHEMA_VERSION = 29;
 
@@ -107,8 +107,8 @@ final class Cache
     private int $ttl;
 
     /**
-     * @param string|null $dir директорія кешу (за замовчуванням — ./cache поряд із проєктом)
-     * @param int         $ttl час життя запису в секундах
+     * @param string|null $dir cache directory (default — ./cache next to the project)
+     * @param int         $ttl entry lifetime in seconds
      */
     public function __construct(?string $dir = null, int $ttl = self::DEFAULT_TTL)
     {
@@ -128,7 +128,7 @@ final class Cache
     }
 
     /**
-     * Повертає закешовані дані для домену або null, якщо їх немає / вони прострочені.
+     * Returns cached data for a domain, or null if missing / expired.
      *
      * @return array<string, mixed>|null
      */
@@ -150,12 +150,12 @@ final class Cache
 
         $entry = json_decode($raw, true);
         if (!is_array($entry) || !isset($entry['cached_at'], $entry['data']) || !is_array($entry['data'])) {
-            // Пошкоджений файл — прибираємо
+            // Corrupted file — remove it
             @unlink($file);
             return null;
         }
 
-        // Перевірка версії сховища: якщо записано в старішому форматі — ігноруємо
+        // Storage version check: ignore entries written in an older format
         $entryVersion = isset($entry['schema_version']) ? (int)$entry['schema_version'] : 1;
         if ($entryVersion < self::SCHEMA_VERSION) {
             @unlink($file);
@@ -171,7 +171,7 @@ final class Cache
     }
 
     /**
-     * Зберігає дані для домену. Повертає true у разі успіху.
+     * Stores data for a domain. Returns true on success.
      *
      * @param array<string, mixed> $data
      */
@@ -200,7 +200,7 @@ final class Cache
     }
 
     /**
-     * Видаляє запис для конкретного домену.
+     * Deletes the record for a specific domain.
      */
     public function delete(string $domain): bool
     {
@@ -215,7 +215,7 @@ final class Cache
     }
 
     /**
-     * Очищає увесь кеш. Повертає кількість видалених файлів.
+     * Clears the entire cache. Returns the number of deleted files.
      */
     public function clear(): int
     {
@@ -223,8 +223,8 @@ final class Cache
     }
 
     /**
-     * Видаляє лише прострочені записи. Повертає кількість видалених файлів.
-     * Якщо $force = true — видаляє взагалі все (еквівалент clear()).
+     * Deletes only expired records. Returns the number of deleted files.
+     * If $force = true — deletes everything (equivalent to clear()).
      */
     public function cleanExpired(bool $force = false): int
     {
@@ -259,7 +259,7 @@ final class Cache
     }
 
     /**
-     * Повертає кількість записів у кеші.
+     * Returns the number of cache entries.
      */
     public function count(): int
     {
@@ -267,7 +267,7 @@ final class Cache
     }
 
     /**
-     * Перевіряє, чи є запис для домену (без урахування TTL — для діагностики).
+     * Checks whether a record exists for a domain (ignoring TTL — for diagnostics).
      */
     public function has(string $domain): bool
     {
@@ -276,7 +276,7 @@ final class Cache
     }
 
     /**
-     * Повертає шлях до файлу для домену. Публічний для тестування/дебагу.
+     * Returns the file path for a domain. Public for testing/debugging.
      */
     public function fileFor(string $domain): string
     {
@@ -284,7 +284,7 @@ final class Cache
     }
 
     /**
-     * Гарантує існування директорії кешу.
+     * Ensures the cache directory exists.
      */
     private function ensureDir(): void
     {
@@ -294,14 +294,14 @@ final class Cache
     }
 
     /**
-     * Нормалізує домен та обчислює SHA-256 хеш для використання як ім'я файлу.
+     * Normalizes a domain and computes a SHA-256 hash for use as a file name.
      */
     private function hashDomain(string $domain): string
     {
         $key = strtolower(trim($domain));
         $key = preg_replace('#^https?://#i', '', $key) ?? $key;
         $key = preg_replace('#^www\.#i', '', $key) ?? $key;
-        // Відрізаємо шлях, порт, query тощо
+        // Strip path, port, query, etc.
         $slash = strpos($key, '/');
         if ($slash !== false) {
             $key = substr($key, 0, $slash);

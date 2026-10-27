@@ -7,8 +7,8 @@ namespace App;
 use RuntimeException;
 
 /**
- * Клас виявлення інформації про сайт:
- * IP-адреса, геолокація, хостинг, WHOIS, CMS, фреймворки та інші технології.
+ * Site information detection class:
+ * IP address, geolocation, hosting, WHOIS, CMS, frameworks and other technologies.
  */
 final class Detector
 {
@@ -19,7 +19,7 @@ final class Detector
     private array $httpHeaders = [];
     private ?string $html = null;
     private array $signatures = [];
-    /** Узгоджена версія HTTP-протоколу основного запиту (HTTP/1.1, HTTP/2, …) або null. */
+    /** Negotiated HTTP protocol version of the main request (HTTP/1.1, HTTP/2, …) or null. */
     private ?string $httpVersion = null;
 
     public function __construct(string $input)
@@ -59,10 +59,10 @@ final class Detector
     }
 
     /**
-     * Виконати повний аналіз сайту.
+     * Run a full site analysis.
      *
-     * @param string[] $only виконати лише ці секції (порожньо = всі)
-     * @param string[] $skip пропустити ці секції
+     * @param string[] $only run only these sections (empty = all)
+     * @param string[] $skip skip these sections
      */
     public function analyze(array $only = [], array $skip = []): array
     {
@@ -88,13 +88,13 @@ final class Detector
     }
 
     /**
-     * Виконати аналіз із поступовим сповіщенням про кожен модуль.
-     * Викликає $emit($sectionName, $sectionData) одразу після кожного завершеного кроку.
-     * Дозволяє реалізувати потокову (SSE) віддачу результатів у реальному часі.
+     * Run analysis with progressive notification for each module.
+     * Calls $emit($sectionName, $sectionData) immediately after each completed step.
+     * Allows streaming (SSE) delivery of results in real time.
      *
      * @param callable(string, mixed): void $emit
-     * @param string[] $only виконати лише ці секції (порожньо = всі)
-     * @param string[] $skip пропустити ці секції
+     * @param string[] $only run only these sections (empty = all)
+     * @param string[] $skip skip these sections
      */
     public function analyzeWithCallback(callable $emit, array $only = [], array $skip = []): array
     {
@@ -122,14 +122,14 @@ final class Detector
     }
 
     /**
-     * Внутрішній послідовний обхід усіх кроків аналізу.
-     * Викликає $onSection($name, $data) після кожного завершеного кроку.
-     * Назва секції 'meta' використовується для базової інформації (domain, ip, url, checked_at).
+     * Internal sequential walk through all analysis steps.
+     * Calls $onSection($name, $data) after each completed step.
+     * Section name 'meta' is used for basic info (domain, ip, url, checked_at).
      *
      * @param callable(string, mixed): void $onSection
-     * @param string[] $only виконати лише ці секції (порожньо = всі) — дозволяє
-     *               винести повільні блоки (PageSpeed) в окремий паралельний стрім
-     * @param string[] $skip пропустити ці секції без виконання їхньої роботи
+     * @param string[] $only run only these sections (empty = all) — allows
+     *               moving slow blocks (PageSpeed) into a separate parallel stream
+     * @param string[] $skip skip these sections without running their work
      */
     private function runAnalysis(callable $onSection, array $only = [], array $skip = []): void
     {
@@ -180,8 +180,8 @@ final class Detector
         if ($needHtml && $html !== null) {
             $generator = $this->extractMeta($html, 'generator');
             $cms = $this->detectCms($html, $generator);
-            // Fallback: якщо HTML — сторінка-заглушка Hostia/bot challenge без wp-маркерів,
-            // але сайт все одно на WordPress — перевіряємо прямими запитами до відомих WP-ендпоінтів.
+            // Fallback: if HTML is a Hostia/bot-challenge placeholder page without WP markers,
+            // but the site is still on WordPress — probe well-known WP endpoints with direct requests.
             if (empty($cms)) {
                 $probed = $this->probeCmsViaEndpoints();
                 if (!empty($probed)) {
@@ -189,7 +189,7 @@ final class Detector
                 }
             }
             if (!empty($cms)) {
-                // Якщо знайдено WordPress — вбудовуємо його деталі прямо в елемент CMS
+                // If WordPress is found — embed its details directly into the CMS item
                 $isWordPress = false;
                 foreach ($cms as $cmsItem) {
                     if ($cmsItem['name'] === 'WordPress') {
@@ -209,7 +209,7 @@ final class Detector
                         unset($item);
                     }
                 }
-                // Якщо знайдено Joomla — вбудовуємо її деталі (версія, шаблон, розширення)
+                // If Joomla is found — embed its details (version, template, extensions)
                 $isJoomla = false;
                 foreach ($cms as $cmsItem) {
                     if ($cmsItem['name'] === 'Joomla') {
@@ -229,7 +229,7 @@ final class Detector
                         unset($item);
                     }
                 }
-                // Якщо знайдено Drupal — вбудовуємо його деталі (версія, тема, модулі)
+                // If Drupal is found — embed its details (version, theme, modules)
                 $isDrupal = false;
                 foreach ($cms as $cmsItem) {
                     if ($cmsItem['name'] === 'Drupal') {
@@ -271,7 +271,7 @@ final class Detector
                 $onSection('server', $unified);
             }
         } elseif ($needHtml) {
-            // Навіть якщо HTML не завантажився, пробуємо визначити сервер за заголовками (можуть бути з редиректу)
+            // Even if HTML failed to load, try to detect the server from headers (may come from a redirect)
             if (!empty($this->httpHeaders)) {
                 $serverInfo = $this->detectWebServer($this->httpHeaders, $cms, $frameworks);
             } else {
@@ -287,9 +287,9 @@ final class Detector
             }
         }
 
-        // PageSpeed Insights (Google) — окремий блок, виключно покази PSI.
-        // Повільний (Lighthouse 10–60 с на стратегію), тому фронтенд
-        // запитує його окремим паралельним стрімом (only=pagespeed).
+        // PageSpeed Insights (Google) — a separate block, PSI scores only.
+        // Slow (Lighthouse takes 10–60s per strategy), so the frontend
+        // requests it via a separate parallel stream (only=pagespeed).
         if ($want('pagespeed')) {
             $pagespeed = $this->detectPageSpeed();
             if ($pagespeed !== null) {
@@ -299,14 +299,14 @@ final class Detector
     }
 
     /**
-     * API-ключ Google PageSpeed Insights (опційно, але рекомендовано).
-     * Без ключа діє низька квота (~100 запитів/день з IP); з ключем — ~25 000/день безкоштовно.
-     * Задається через `config.php` (рекомендовано), env `PAGESPEED_API_KEY`
-     * або константу `PAGESPEED_API_KEY`.
-     * УВАГА: у Google Cloud Console для ключа має бути
-     * Application restrictions = None (запити йдуть із сервера без Referer —
-     * обмеження "Websites / HTTP referrers" дає помилку
-     * "Requests from referer <empty> are blocked").
+     * Google PageSpeed Insights API key (optional, but recommended).
+     * Without a key the quota is low (~100 requests/day per IP); with a key — ~25,000/day for free.
+     * Set via `config.php` (recommended), env `PAGESPEED_API_KEY`
+     * or the `PAGESPEED_API_KEY` constant.
+     * NOTE: in Google Cloud Console the key must have
+     * Application restrictions = None (requests go from the server without Referer —
+     * a "Websites / HTTP referrers" restriction produces a
+     * "Requests from referer <empty> are blocked" error).
      */
     private function getPageSpeedApiKey(): ?string
     {
@@ -330,11 +330,11 @@ final class Detector
     }
 
     /**
-     * Окремий блок PageSpeed — виключно покази Google PageSpeed Insights (Lighthouse).
-     * Повертає дві стратегії поруч для порівняння: `mobile` та `desktop`.
-     * Кожна: бали категорій (0–100), ключові метрики lab (FCP/LCP/TBT/CLS/SI/TTI)
-     * та поле field (CrUX, якщо є). При помилці стратегії — її масив містить
-     * `error`, щоб картка показала причину замість зникнення.
+     * Separate PageSpeed block — Google PageSpeed Insights (Lighthouse) scores only.
+     * Returns two strategies side by side for comparison: `mobile` and `desktop`.
+     * Each: category scores (0–100), key lab metrics (FCP/LCP/TBT/CLS/SI/TTI)
+     * and a field (CrUX, if present). On strategy failure its array contains
+     * `error`, so the card shows the reason instead of disappearing.
      *
      * @return array<string, mixed>|null
      */
@@ -349,9 +349,9 @@ final class Detector
         ];
         $fetched = $this->fetchPageSpeedMulti($urls, 70);
 
-        // Ключ із обмеженням "Websites / HTTP referrers" серверні запити
-        // (без Referer) відхиляються: "Requests from referer <empty> are blocked".
-        // Заблоковані стратегії пробуємо ще раз БЕЗ ключа (низька квота, але блок покаже дані).
+        // A key restricted to "Websites / HTTP referrers" rejects server requests
+        // (without Referer): "Requests from referer <empty> are blocked".
+        // Blocked strategies are retried WITHOUT a key (low quota, but the block will show data).
         $usedFallback = false;
         if ($key !== null) {
             foreach (['mobile', 'desktop'] as $strategy) {
@@ -402,7 +402,7 @@ final class Detector
     }
 
     /**
-     * Чи відповідь PSI означає заблокований ключ (referer-обмеження тощо).
+     * Whether a PSI response means a blocked key (referer restrictions, etc.).
      */
     private function isKeyBlockedResponse(int $httpCode, string $body): bool
     {
@@ -423,7 +423,7 @@ final class Detector
     }
 
     /**
-     * Розбір однієї відповіді PSI у структуру стратегії.
+     * Parse one PSI response into a strategy structure.
      *
      * @param array{0: int, 1: string}|null $fetched
      * @return array<string, mixed>
@@ -449,7 +449,7 @@ final class Detector
 
         if ($httpCode < 200 || $httpCode >= 300) {
             $msg = $data['error']['message'] ?? ('HTTP ' . $httpCode);
-            // Дружні тексти для типових помилок квоти/аналізу
+            // Friendly messages for typical quota/analysis errors
             if (str_contains(strtolower((string)$msg), 'quota') || $httpCode === 429) {
                 if ($usedFallback) {
                     $msg = 'Ключ PageSpeed API заблоковано за referer, а безключова квота сервера вичерпана. '
@@ -549,7 +549,7 @@ final class Detector
             'field_metrics' => $fieldMetrics,
         ];
 
-        // Якщо жодного бала немає — вважаємо відповідь порожньою
+        // If there are no scores at all — treat the response as empty
         if ($result['performance'] === null && $result['accessibility'] === null
             && $result['seo'] === null && empty($result['metrics'])) {
             return [
@@ -563,8 +563,8 @@ final class Detector
     }
 
     /**
-     * Паралельні запити до PageSpeed API (mobile + desktop одночасно через curl_multi).
-     * Без cURL — послідовно через fetchPageSpeedBody.
+     * Parallel requests to the PageSpeed API (mobile + desktop at once via curl_multi).
+     * Without cURL — sequentially via fetchPageSpeedBody.
      *
      * @param array<string, string> $urls ['mobile' => url, 'desktop' => url]
      * @return array<string, array{0: int, 1: string}|null>
@@ -628,7 +628,7 @@ final class Detector
     }
 
     /**
-     * HTTP-запит до PageSpeed API з подовженим таймаутом (Lighthouse думає 10–60 с).
+     * HTTP request to the PageSpeed API with an extended timeout (Lighthouse thinks for 10–60s).
      *
      * @return array{0: int, 1: string}|null [http_code, body]
      */
@@ -688,7 +688,7 @@ final class Detector
     }
 
     /**
-     * Форматує значення error_reporting() у людино-зрозумілий рядок.
+     * Formats an error_reporting() value into a human-readable string.
      */
     private function formatErrorReporting(int $level): string
     {
@@ -712,8 +712,8 @@ final class Detector
             E_DEPRECATED => 'E_DEPRECATED',
             E_USER_DEPRECATED => 'E_USER_DEPRECATED',
         ];
-        // E_STRICT застаріло з PHP 8.4 — перевіряємо версію, щоб не викликати
-        // deprecation notice в нових версіях.
+        // E_STRICT is deprecated since PHP 8.4 — check the version to avoid triggering
+        // a deprecation notice on newer versions.
         if (PHP_VERSION_ID < 80400 && defined('E_STRICT')) {
             $map[E_STRICT] = 'E_STRICT';
         }
@@ -795,7 +795,7 @@ final class Detector
             $data = json_decode($body, true);
         }
 
-        // Якщо RDAP-відповідь коректна — парсимо її (основний шлях)
+        // If the RDAP response is valid — parse it (main path)
         if (is_array($data) && !isset($data['error'])) {
             $domainName = is_string($data['domain'] ?? null) ? $data['domain'] : $domain;
             if (!empty($data['isRegistered']) && $data['isRegistered'] === false) {
@@ -804,7 +804,7 @@ final class Detector
                     'Статус' => 'Домен не зареєстрований',
                 ];
             }
-            // Якщо є дані реєстратора/дат — повертаємо результат
+            // If registrar/date data is present — return the result
             if (!empty($data['registrar']) || !empty($data['dates'])) {
                 $registrar = $data['registrar'] ?? [];
                 $dates = $data['dates'] ?? [];
@@ -842,26 +842,26 @@ final class Detector
                 ];
 
                 $cleaned = $this->cleanFields($whois);
-                // Якщо після очищення залишився хоча б домен + ще одне поле — вважаємо валідним
+                // If at least domain + one more field remain after cleanup — treat as valid
                 if (count($cleaned) > 1) {
                     return $cleaned;
                 }
             }
-            // Інакше — можливо домен делегованої зони (.lviv.ua тощо), де hostmaster RDAP дає 501.
-            // Пробуємо fallback через TCP WHOIS.
+            // Otherwise — possibly a delegated-zone domain (.lviv.ua etc.) where hostmaster RDAP returns 501.
+            // Try the TCP WHOIS fallback.
         }
 
-        // Fallback 1: TCP WHOIS через whois.ua (автоматично редіректить на whois.lviv.ua / whois.uar.net)
+        // Fallback 1: TCP WHOIS via whois.ua (automatically redirects to whois.lviv.ua / whois.uar.net)
         $fallback = $this->lookupWhoisViaTcp($domain);
         if ($fallback !== null) {
             return $fallback;
         }
 
-        // Fallback 2: якщо RDAP повернув явну помилку, але TCP теж не спрацював — показуємо
-        // інформативний блок замість приховування секції, щоб користувач бачив причину.
+        // Fallback 2: if RDAP returned an explicit error but TCP also failed — show
+        // an informative block instead of hiding the section, so the user sees the reason.
         if (is_array($data) && isset($data['error'])) {
             $detail = $data['error']['detail'] ?? $data['error']['message'] ?? '';
-            // Для делегованих зон rdap.hostmaster.ua часто дає 501 — це не означає відсутність WHOIS
+            // For delegated zones rdap.hostmaster.ua often returns 501 — this does not mean WHOIS is missing
             return $this->cleanFields([
                 'Домен' => $domain,
                 'Примітка' => 'WHOIS через RDAP тимчасово недоступний для цієї зони (registry error 501). Спробуйте оновити пізніше — дані буде отримано через резервний WHOIS.',
@@ -869,18 +869,18 @@ final class Detector
             ]);
         }
 
-        // Якщо первинний HTTP-запит взагалі не відповів — пробуємо ще раз через TCP, і якщо й він пустий — повертаємо null
-        // (секція не покажеться, але це вже крайній випадок коли мережа недоступна).
+        // If the primary HTTP request got no response at all — try TCP once more, and if it is also empty — return null
+        // (the section will not be shown, but this is an edge case where the network is unreachable).
         return null;
     }
 
     /**
-     * Резервний WHOIS через TCP (порт 43) для делегованих зон .ua (lviv.ua, kharkiv.ua тощо).
-     * Використовує whois.ua, який автоматично редіректить на whois.lviv.ua / whois.uar.net.
+     * Backup WHOIS via TCP (port 43) for delegated .ua zones (lviv.ua, kharkiv.ua, etc.).
+     * Uses whois.ua, which automatically redirects to whois.lviv.ua / whois.uar.net.
      */
     private function lookupWhoisViaTcp(string $domain): ?array
     {
-        // Пробуємо кілька серверів по черзі — перший успішний результат парсимо
+        // Try several servers in turn — parse the first successful result
         $servers = ['whois.ua', 'whois.uar.net'];
         foreach ($servers as $server) {
             $raw = $this->whoisTcpQuery($domain, $server, 6);
@@ -896,7 +896,7 @@ final class Detector
     }
 
     /**
-     * Виконує TCP-запит до WHOIS-сервера.
+     * Performs a TCP query to a WHOIS server.
      */
     private function whoisTcpQuery(string $domain, string $server, int $timeout = 5): ?string
     {
@@ -904,7 +904,7 @@ final class Detector
         if ($fp === false || $fp === null) {
             return null;
         }
-        // Таймаут читання
+        // Read timeout
         @stream_set_timeout($fp, $timeout);
         @fwrite($fp, $domain . "\r\n");
         $out = '';
@@ -920,14 +920,14 @@ final class Detector
     }
 
     /**
-     * Парсить сирий WHOIS-текст (формат UARNet / whois.ua redirect) у структуру для відображення.
+     * Parses raw WHOIS text (UARNet / whois.ua redirect format) into a display structure.
      */
     private function parseWhoisTcp(string $raw, string $domain): ?array
     {
-        // Відсікаємо випадки "No match" / домен не знайдено
+        // Filter out "No match" / domain-not-found cases
         $lower = strtolower($raw);
         if (str_contains($lower, 'no match') || str_contains($lower, 'no entries found') || str_contains($lower, 'not found') && str_contains($lower, 'no data')) {
-            // Перевіряємо чи точно це повідомлення про відсутність домену, а не просто "status: not found"
+            // Check that this is really a domain-missing message, not just a "status: not found"
             if (preg_match('~no match for|no entries found for|domain not found~i', $raw)) {
                 return [
                     'Домен' => $domain,
@@ -935,8 +935,8 @@ final class Detector
                 ];
             }
         }
-        // Для UARNet формат відрізняється: поля "Domain Name:", "Registrar:", "Creation Date:" тощо
-        // Також підтримуємо формат hostmaster.ua "% Domain:" / "domain:".
+        // For UARNet the format differs: "Domain Name:", "Registrar:", "Creation Date:" etc.
+        // Also support the hostmaster.ua "% Domain:" / "domain:" format.
         $map = [
             'Домен' => ['Domain Name', 'domain'],
             'Реєстратор' => ['Registrar', 'registrar'],
@@ -952,7 +952,7 @@ final class Detector
         $nsList = [];
         $statusList = [];
 
-        // Розбиваємо на рядки та парсимо "Key: value"
+        // Split into lines and parse "Key: value"
         $lines = preg_split('/\r\n|\n|\r/', $raw);
         foreach ($lines as $line) {
             $line = trim($line);
@@ -970,9 +970,9 @@ final class Detector
             }
             $keyLower = strtolower($key);
 
-            // DNS-сервери — може бути кілька рядків "Name Server:" / "nserver:" / "nameserver"
+            // DNS servers — there may be several "Name Server:" / "nserver:" / "nameserver" lines
             if (in_array($keyLower, ['name server', 'nserver', 'nameserver', 'name servers'], true)) {
-                // Значення може бути "dns1.hostiq.ua" або "dns1.hostiq.ua 185.68.16.16"
+                // Value may be "dns1.hostiq.ua" or "dns1.hostiq.ua 185.68.16.16"
                 $ns = preg_split('/\s+/', $value)[0];
                 $ns = strtolower(trim($ns));
                 if ($ns !== '' && filter_var($ns, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME)) {
@@ -983,7 +983,7 @@ final class Detector
                 continue;
             }
             if ($keyLower === 'domain status' || $keyLower === 'status') {
-                // Формат "ok https://icann.org/epp#ok" — беремо перше слово
+                // "ok https://icann.org/epp#ok" format — take the first word
                 $statusList[] = $value;
                 continue;
             }
@@ -991,9 +991,9 @@ final class Detector
             foreach ($map as $uaKey => $aliases) {
                 foreach ($aliases as $alias) {
                     if (strtolower($alias) === $keyLower) {
-                        // Не перезаписуємо якщо вже є
+                        // Do not overwrite if already set
                         if (!isset($result[$uaKey]) || $result[$uaKey] === null) {
-                            // Дати форматуємо
+                            // Format dates
                             if (str_contains($uaKey, 'Дата')) {
                                 $result[$uaKey] = $this->formatDate($value);
                             } else {
@@ -1010,19 +1010,19 @@ final class Detector
             $result['DNS-сервери'] = implode("\n", array_unique($nsList));
         }
         if (!empty($statusList)) {
-            // Нормалізуємо статуси: "ok https://..." -> "ok"
+            // Normalize statuses: "ok https://..." -> "ok"
             $norm = array_map(static fn($s) => trim(explode(' ', $s)[0]), $statusList);
             $result['Статуси домену'] = implode(', ', array_unique($norm));
         }
 
-        // Якщо вдалося витягнути хоча б реєстратора або дати — вважаємо валідним
+        // If at least the registrar or dates could be extracted — treat as valid
         $hasData = isset($result['Реєстратор']) || isset($result['Дата створення']) || isset($result['Дата закінчення']) || isset($result['DNS-сервери']);
         if (!$hasData) {
             return null;
         }
 
-        // Додаємо примітку про джерело для делегованих зон
-        // Не додаємо як окреме поле щоб не засмічувати, але можна залишити для дебагу
+        // Add a source note for delegated zones
+        // Do not add it as a separate field to avoid clutter, but it can stay for debugging
         return $this->cleanFields($result);
     }
 
@@ -1036,10 +1036,10 @@ final class Detector
             . '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
         $acceptLang = 'uk,en;q=0.9';
 
-        // Спочатку намагаємось через cURL — він надійніше повертає заголовки
-        // ($http_response_header на деяких хостингах спорожнюється після
-        // кількох file_get_contents-підряд — наприклад, коли викликаються
-        // DNS-WHOIS, ip-api, потім HTML. cURL ізольований для кожного запиту).
+        // First try cURL — it returns headers more reliably
+        // ($http_response_header on some hosts gets emptied after
+        // several consecutive file_get_contents calls — e.g. when DNS-WHOIS,
+        // ip-api, then HTML are called. cURL is isolated per request).
         if (function_exists('curl_init')) {
             $result = $this->fetchWithCurl($this->url, $userAgent, $acceptLang, 15);
             if ($result === null) {
@@ -1059,7 +1059,7 @@ final class Detector
             return null;
         }
 
-        // Фолбек через file_get_contents (якщо cURL недоступний)
+        // Fallback via file_get_contents (if cURL is unavailable)
         $ctx = stream_context_create([
             'http' => [
                 'method' => 'GET',
@@ -1098,8 +1098,8 @@ final class Detector
     }
 
     /**
-     * Завантаження сторінки через cURL.
-     * Повертає масив ['headers' => [...], 'body' => '...'] або null при помилці.
+     * Load a page via cURL.
+     * Returns an array ['headers' => [...], 'body' => '...'] or null on failure.
      *
      * @return array{headers: string[], body: string}|null
      */
@@ -1112,7 +1112,7 @@ final class Detector
         curl_setopt_array($ch, [
             CURLOPT_URL => $url,
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_HEADER => true,           // повернути заголовки в тілі відповіді
+            CURLOPT_HEADER => true,           // return headers in the response body
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_MAXREDIRS => 5,
             CURLOPT_TIMEOUT => $timeout,
@@ -1124,11 +1124,11 @@ final class Detector
                 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                 'Accept-Language: ' . $acceptLang,
             ],
-            CURLOPT_ENCODING => '',          // підтримка gzip/deflate
+            CURLOPT_ENCODING => '',          // gzip/deflate support
         ]);
         $response = curl_exec($ch);
         if ($response === false) {
-            // PHP 8.0+ не потребує curl_close (no-op), але викликаємо для сумісності
+            // PHP 8.0+ does not need curl_close (no-op), but call it for compatibility
             if (PHP_VERSION_ID < 80000) {
                 curl_close($ch);
             }
@@ -1136,7 +1136,7 @@ final class Detector
         }
         $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        // Узгоджена версія протоколу фінальної відповіді (реальний факт про стек).
+        // Negotiated protocol version of the final response (a real fact about the stack).
         $protoNum = (int)curl_getinfo($ch, CURLINFO_HTTP_VERSION);
         $this->httpVersion = match (true) {
             $protoNum === (int)CURL_HTTP_VERSION_1_0 => 'HTTP/1.0',
@@ -1152,17 +1152,17 @@ final class Detector
         $rawHeaders = substr((string)$response, 0, (int)$headerSize);
         $body = substr((string)$response, (int)$headerSize);
 
-        // При FOLLOWLOCATION cURL склеює заголовки ВСІХ відповідей у ланцюжку
-        // редиректів. Для аналізу потрібні лише заголовки ФІНАЛЬНОЇ відповіді —
-        // інакше Server/X-Powered-By з проміжного 301/302 (часто іншого сервера)
-        // затирають реальні. Розбиваємо на блоки за статус-рядками і беремо останній.
+        // With FOLLOWLOCATION cURL concatenates headers of ALL responses in the
+        // redirect chain. Only the FINAL response headers are needed for analysis —
+        // otherwise Server/X-Powered-By from an intermediate 301/302 (often a different server)
+        // would overwrite the real ones. Split into blocks by status lines and take the last one.
         $headers = $this->parseLastResponseHeaders($rawHeaders);
         return ['headers' => $headers, 'body' => $body];
     }
 
     /**
-     * Виділяє заголовки останньої відповіді з сирого блоку cURL
-     * (ккілька "HTTP/1.1 301 ..." + заголовки при редиректах).
+     * Extract headers of the last response from a raw cURL block
+     * (multiple "HTTP/1.1 301 ..." + headers on redirects).
      *
      * @return string[]
      */
@@ -1176,7 +1176,7 @@ final class Detector
     }
 
     /**
-     * Парсер сирих HTTP-заголовків (формат "Name: value\r\n") у масив рядків.
+     * Parser for raw HTTP headers ("Name: value\r\n" format) into an array of strings.
      *
      * @return string[]
      */
@@ -1200,9 +1200,9 @@ final class Detector
     {
         $candidates = $this->signatures['cms'] ?? [];
         $lower = strtolower($html);
-        // Прибираємо шум (base64-блоби, вбудовані шрифти/картинки), щоб короткі
-        // сигнали на кшталт "modx" / "sqsp" / "aspx" не спрацьовували всередині них.
-        // Wappalyzer шукає сигнали в тегах/атрибутах, а не в сирому тексті.
+        // Strip noise (base64 blobs, embedded fonts/images) so that short
+        // signals like "modx" / "sqsp" / "aspx" do not match inside them.
+        // Wappalyzer looks for signals in tags/attributes, not in raw text.
         $cleanLower = strtolower($this->stripNoiseForDetection($html));
 
         $scored = [];
@@ -1231,7 +1231,7 @@ final class Detector
                     $weakHits++;
                 }
             }
-            // Зворотна сумісність зі старим форматом 'signs': URL-подібні → strong, решта → weak.
+            // Backward compatibility with the old 'signs' format: URL-like → strong, rest → weak.
             foreach ($info['signs'] ?? [] as $sign) {
                 $s = strtolower((string)$sign);
                 $isUrlLike = (str_contains($s, '/') || str_contains($s, '.') || str_contains($s, ':') || str_contains($s, '='))
@@ -1246,8 +1246,8 @@ final class Detector
                 }
             }
 
-            // Поріг як у Wappalyzer: генератор або 1 strong, або ≥2 weak.
-            // Один слабкий сигнал (напр. "sqsp" чи "modx" десь у тексті) — недостатньо.
+            // Threshold as in Wappalyzer: a generator, or 1 strong, or ≥2 weak.
+            // A single weak signal (e.g. "sqsp" or "modx" somewhere in the text) is not enough.
             if (!$hasGenerator && $strongHits < 1 && $weakHits < 2) {
                 continue;
             }
@@ -1266,9 +1266,9 @@ final class Detector
             return [];
         }
 
-        // Взаємовиключення CMS: дві різні CMS майже ніколи не стоять поруч.
-        // Якщо є CMS з авторитетним доказом (generator або ≥2 strong),
-        // відсікаємо інші, що мають лише 1 strong без генератора.
+        // CMS mutual exclusion: two different CMSs almost never stand side by side.
+        // If there is a CMS with authoritative proof (generator or ≥2 strong),
+        // drop others that have only 1 strong without a generator.
         $hasAuthoritative = false;
         foreach ($scored as $s) {
             if ($s['hasGenerator'] || $s['strong'] >= 2) {
@@ -1282,17 +1282,17 @@ final class Detector
                     unset($scored[$name]);
                 }
             }
-            // Якщо залишилось кілька з по 1 strong — залишаємо лише найкращу.
-            // (напр. WordPress з /wp-content/ + /wp-includes/ перемагає MODX з 1 weak-пахотою)
+            // If several with 1 strong remain — keep only the best one.
+            // (e.g. WordPress with /wp-content/ + /wp-includes/ beats MODX with 1 weak match)
             if (count($scored) > 1) {
                 $maxScore = max(array_column($scored, 'score'));
-                // Залишаємо всі з генератором, інакше — лише топ за скором.
+                // Keep all with a generator, otherwise — only the top by score.
                 $withGen = array_filter($scored, static fn($s) => $s['hasGenerator']);
                 if (!empty($withGen)) {
                     $scored = $withGen;
                 } else {
                     $scored = array_filter($scored, static fn($s) => $s['score'] >= $maxScore);
-                    // При рівному скорі віддаємо перевагу більшому числу strong.
+                    // On equal scores prefer the higher strong count.
                     if (count($scored) > 1) {
                         $maxStrong = max(array_column($scored, 'strong'));
                         $scored = array_filter($scored, static fn($s) => $s['strong'] >= $maxStrong);
@@ -1311,7 +1311,7 @@ final class Detector
                 'site' => $info['site'] ?? null,
             ];
         }
-        // Сортуємо за скором (найвпевненіша — перша).
+        // Sort by score (most confident first).
         usort($result, static function ($a, $b) use ($scored) {
             return ($scored[$b['name']]['score'] ?? 0) <=> ($scored[$a['name']]['score'] ?? 0);
         });
@@ -1319,9 +1319,9 @@ final class Detector
     }
 
     /**
-     * Видаляє шум для точного матчингу: data-URI з base64 та довгі
-     * безпробільні base64-ланцюжки (вбудовані шрифти/картинки в <style>/<script>).
-     * Саме в них хибно спрацьовували короткі сигнали "modx"/"sqsp"/"aspx".
+     * Removes noise for precise matching: data-URIs with base64 and long
+     * spaceless base64 chains (embedded fonts/images in <style>/<script>).
+     * Short signals "modx"/"sqsp"/"aspx" falsely matched inside them.
      */
     private function stripNoiseForDetection(string $html): string
     {
@@ -1334,12 +1334,12 @@ final class Detector
     }
 
     /**
-     * Точний матчинг сигналу в стилі Wappalyzer.
-     * - URL/шлях-подібні (з "/" "." ":" "=" довжиною ≥5) — підрядок, але в очищеному
-     *   HTML без base64-шуму (base64 не містить крапок, тож "squarespace.com" там неможливий).
-     * - __VIEWSTATE — лише як <input name="__VIEWSTATE"> (а не підрядок).
-     * - ".aspx" — лише з крапкою та межею слова (а не "aspx" всередині тексту).
-     * - Голі слова ("modx", "flask") — лише з межами слів \b на очищеному HTML.
+     * Precise signal matching in the Wappalyzer style.
+     * - URL/path-like (with "/" "." ":" "=" and length ≥5) — substring, but in cleaned
+     *   HTML without base64 noise (base64 has no dots, so "squarespace.com" is impossible there).
+     * - __VIEWSTATE — only as <input name="__VIEWSTATE"> (not a substring).
+     * - ".aspx" — only with a dot and a word boundary (not "aspx" inside text).
+     * - Bare words ("modx", "flask") — only with \b word boundaries on cleaned HTML.
      */
     private function preciseSignMatch(string $html, string $lower, string $cleanLower, string $sign): bool
     {
@@ -1353,7 +1353,7 @@ final class Detector
         }
 
         if ($s === 'aspx') {
-            // Вимагаємо ".aspx" з межею — як у посиланнях/формах, а не в base64.
+            // Require ".aspx" with a boundary — as in links/forms, not in base64.
             return (bool)preg_match('~\.aspx\b~i', $html);
         }
 
@@ -1363,23 +1363,23 @@ final class Detector
             return str_contains($cleanLower, $s);
         }
 
-        // Голе слово: межі слів на очищеному HTML.
+        // Bare word: word boundaries on cleaned HTML.
         return (bool)preg_match('~\b' . preg_quote($sign, '~') . '\b~i', $cleanLower);
     }
 
     /**
-     * Резервна перевірка CMS через прямі запити, коли HTML — антибот-заглушка.
-     * Повертає масив у форматі detectCms або порожній.
+     * Backup CMS check via direct requests when HTML is an anti-bot placeholder.
+     * Returns an array in detectCms format or empty.
      */
     private function probeCmsViaEndpoints(): array
     {
-        // Перевіряємо кілька характерних WP-ендпоінтів
+        // Probe several characteristic WP endpoints
         $checks = [
             $this->url . '/wp-json/' => function(string $body): bool {
                 if ($body === '') return false;
                 $data = json_decode($body, true);
                 if (!is_array($data)) return false;
-                // Наявність routes з wp/v2 — явна ознака WP REST API
+                // Routes with wp/v2 present — a clear WP REST API sign
                 if (!empty($data['routes']) && is_array($data['routes'])) {
                     foreach (array_keys($data['routes']) as $route) {
                         if (str_starts_with((string)$route, '/wp/')) return true;
@@ -1396,12 +1396,12 @@ final class Detector
                 return stripos($body, 'WordPress') !== false && stripos($body, 'Version') !== false;
             },
             $this->url . '/wp-login.php' => function(string $body): bool {
-                // Сторінка логіну WP містить loginform
+                // WP login page contains loginform
                 return stripos($body, 'loginform') !== false || stripos($body, 'wp-submit') !== false;
             },
             $this->url . '/wp-includes/js/wp-emoji-release.min.js' => function(string $body): bool {
-                // SPA-сайти (Angular/React) віддають головну сторінку на будь-який невідомий шлях.
-                // Тому перевіряємо, що це справді JS-файл, а не HTML-фолбек, і що в ньому є twemoji.
+                // SPA sites (Angular/React) serve the homepage for any unknown path.
+                // So check that this is really a JS file, not an HTML fallback, and that it contains twemoji.
                 if (stripos($body, '<!DOCTYPE') !== false || stripos($body, '<html') !== false) {
                     return false;
                 }
@@ -1412,7 +1412,7 @@ final class Detector
         foreach ($checks as $url => $validator) {
             $body = $this->httpGet($url, 5);
             if ($body === null || $body === '') continue;
-            // Якщо це антибот-заглушка Hostia — пропускаємо (перевіряємо характерний маркер)
+            // If this is a Hostia anti-bot placeholder — skip it (check the characteristic marker)
             if (stripos($body, 'hostia-antirobot') !== false || stripos($body, 'Я не Робот') !== false) {
                 continue;
             }
@@ -1449,10 +1449,10 @@ final class Detector
                     break;
                 }
             }
-            // Старі 'signs': URL-подібні вважаємо strong, голі слова — weak.
+            // Legacy 'signs': URL-like ones count as strong, bare words — as weak.
             foreach ($info['signs'] ?? [] as $sign) {
                 $s = strtolower((string)$sign);
-                // Службовий маркер "x-powered-by: ..." шукаємо лише в заголовках, не в HTML.
+                // The "x-powered-by: ..." service marker is looked up in headers only, not in HTML.
                 if (str_starts_with($s, 'x-powered-by:')) {
                     continue;
                 }
@@ -1481,8 +1481,8 @@ final class Detector
                 }
             }
 
-            // Поріг: заголовок або strong-сигнал, або ≥2 weak.
-            // Один weak (напр. "csrf-token", "aspx" у base64) — недостатньо.
+            // Threshold: a header or a strong signal, or ≥2 weak.
+            // A single weak signal (e.g. "csrf-token", "aspx" in base64) is not enough.
             $matched = $headerHit || $strongHits >= 1 || $weakHits >= 2;
             if ($matched) {
                 $found[$name] = $info;
@@ -1540,8 +1540,8 @@ final class Detector
     }
 
     /**
-     * Конфігурація розпізнавання CDN.
-     * Кожен запис: ['name' => ..., 'headers' => [...], 'server_match' => ..., 'via_match' => ..., 'html_signs' => [...]]
+     * CDN detection configuration.
+     * Each entry: ['name' => ..., 'headers' => [...], 'server_match' => ..., 'via_match' => ..., 'html_signs' => [...]]
      */
     private const CDN_SIGNATURES = [
         'Cloudflare' => [
@@ -1637,20 +1637,20 @@ final class Detector
     ];
 
     /**
-     * Визначення веб-сервера за HTTP-заголовками.
+     * Web server detection from HTTP headers.
      *
-     * Повертає структуру:
+     * Returns a structure:
      *   [
-     *     'name'             => string  — назва (nginx, Apache, LiteSpeed, IIS, Caddy, cloudflare тощо)
-     *     'version'          => string|null  — версія, якщо її розкрито
+     *     'name'             => string  — name (nginx, Apache, LiteSpeed, IIS, Caddy, cloudflare, etc.)
+     *     'version'          => string|null  — version, if disclosed
      *     'powered_by'       => string|null  — X-Powered-By
-     *     'security_headers' => array        — X-Frame-Options, HSTS, CSP тощо
-     *     'note'             => string|null  — пояснення, якщо сервер прихований
-     *     'raw'              => string|null  — необроблене значення Server-заголовка
-     *     'server_modules'   => array        — вторинні токени з Server (OpenSSL/PHP …)
-     *     'via'/'x_server'   => string|null  — докази проксі/бекенда
-     *     'php_present'      => bool         — чи точно є PHP (заголовки/cookie/CMS-інференс)
-     *     'php_source'       => string|null  — джерело висновку про PHP
+     *     'security_headers' => array        — X-Frame-Options, HSTS, CSP, etc.
+     *     'note'             => string|null  — explanation if the server is hidden
+     *     'raw'              => string|null  — raw Server header value
+     *     'server_modules'   => array        — secondary tokens from Server (OpenSSL/PHP …)
+     *     'via'/'x_server'   => string|null  — proxy/backend evidence
+     *     'php_present'      => bool         — whether PHP is definitely present (headers/cookies/CMS inference)
+     *     'php_source'       => string|null  — source of the PHP conclusion
      *   ]
      */
     private function detectWebServer(array $headers, array $cms = [], array $frameworks = []): array
@@ -1684,8 +1684,8 @@ final class Detector
 
             switch ($name) {
                 case 'server':
-                    // При ланцюжку редиректів беремо ОСТАННЄ значення Server
-                    // (фінальний сервер, а не проміжний 301-редирект).
+                    // On a redirect chain take the LAST Server value
+                    // (the final server, not an intermediate 301 redirect).
                     $result['raw'] = $value;
                     $parsed = $this->parseServerHeader($value);
                     if ($parsed !== null) {
@@ -1696,7 +1696,7 @@ final class Detector
                         }
                         $serverMatched = true;
                     } else {
-                        // Невідомий формат — все одно показуємо як є
+                        // Unknown format — still show as is
                         $result['name'] = $value !== '' ? $value : 'невідомо';
                         $serverMatched = $value !== '';
                     }
@@ -1711,7 +1711,7 @@ final class Detector
                 case 'x-server':
                 case 'x-backend-server':
                 case 'x-served-by':
-                    // Додатковий орієнтир, коли Server приховано (Varnish/Fastly, балансувальники).
+                    // Extra hint when Server is hidden (Varnish/Fastly, load balancers).
                     if ($rawXServer === null && $value !== '') {
                         $rawXServer = $name . ': ' . $value;
                     }
@@ -1740,8 +1740,8 @@ final class Detector
         }
 
         if (!$serverMatched) {
-            // Server-заголовок відсутній. Спробуємо визначити за X-Powered-By
-            // та іншими непрямими ознаками.
+            // Server header is missing. Try to detect via X-Powered-By
+            // and other indirect signs.
             if ($rawPoweredBy !== null) {
                 $lowerPb = strtolower($rawPoweredBy);
                 if (str_contains($lowerPb, 'asp.net')) {
@@ -1770,7 +1770,7 @@ final class Detector
             }
         }
 
-        // Зберігаємо Via / X-Server як доказ (фронтенд їх ігнорує, але вони є в JSON/PDF-дебагу).
+        // Store Via / X-Server as evidence (the frontend ignores them, but they are in JSON/PDF debug).
         if ($rawVia !== null) {
             $result['via'] = mb_substr($rawVia, 0, 160);
         }
@@ -1778,7 +1778,7 @@ final class Detector
             $result['x_server'] = mb_substr($rawXServer, 0, 160);
         }
 
-        // Точна версія PHP — лише якщо її прямо розкриває заголовок (X-Powered-By / Server), без здогадок за CMS
+        // Exact PHP version — only if directly disclosed by a header (X-Powered-By / Server), no CMS guessing
         $phpVersion = null;
         $phpSource = null;
         if ($rawPoweredBy !== null && preg_match('~php/?\s*([0-9]+\.[0-9]+(?:\.[0-9]+)?(?:[.-][A-Za-z0-9]+)*)~i', $rawPoweredBy, $m)) {
@@ -1789,7 +1789,7 @@ final class Detector
             $phpSource = 'Server';
         }
 
-        // Якщо на головній заголовок приховано (часте кешування), пробуємо точні PHP-ендпоінти
+        // If the header is hidden on the homepage (often cached), try precise PHP endpoints
         if ($phpVersion === null) {
             $extra = $this->probePhpVersionViaHeaders();
             if ($extra !== null) {
@@ -1798,7 +1798,7 @@ final class Detector
             }
         }
 
-        // Останній шанс — відкритий phpinfo (дає точну версію, якщо адміністратор залишив файл)
+        // Last resort — an open phpinfo (gives the exact version if the admin left the file)
         if ($phpVersion === null) {
             $probe = $this->probePhpInfo(rtrim($this->url, '/') . '/phpinfo.php');
             if ($probe === null) {
@@ -1816,12 +1816,12 @@ final class Detector
             $result['php_present'] = true;
             $result['php_source'] = $phpSource;
         } else {
-            // Явно прибираємо порожні php-поля, щоб не засмічувати відповідь
+            // Explicitly drop empty php fields to avoid cluttering the response
             unset($result['php_version'], $result['php_version_source']);
         }
 
-        // Присутність PHP без точної версії (чесний інференс, як у БД):
-        // 1) PHP-токен у Server без версії, 2) cookie PHPSESSID, 3) PHP-CMS/фреймворк.
+        // PHP presence without an exact version (honest inference, as with DB):
+        // 1) PHP token in Server without a version, 2) PHPSESSID cookie, 3) PHP CMS/framework.
         if (!$result['php_present']) {
             if ($rawPoweredBy !== null && stripos($rawPoweredBy, 'php') !== false) {
                 $result['php_present'] = true;
@@ -1863,7 +1863,7 @@ final class Detector
     }
 
     /**
-     * Виявлення Node.js за заголовками та HTML.
+     * Node.js detection from headers and HTML.
      * @return array{present: bool, version: ?string, source: ?string}
      */
     private function detectNodeJs(array $headers, ?string $html): array
@@ -1905,12 +1905,12 @@ final class Detector
             }
         }
 
-        // HTML-сигнали (без версії, лише presence)
+        // HTML signals (presence only, no version)
         if ($html !== null && !$present) {
             $lowHtml = strtolower($html);
             if (str_contains($lowHtml, 'x-powered-by: express') || str_contains($lowHtml, '__next_data__') || str_contains($lowHtml, '__nuxt__')) {
-                // Next/Nuxt працюють на Node, але версія невідома
-                // Не маркуємо як Node присутній без заголовків, щоб не давати хибних спрацювань
+                // Next/Nuxt run on Node, but the version is unknown
+                // Do not mark Node as present from headers alone to avoid false positives
             }
         }
 
@@ -1918,7 +1918,7 @@ final class Detector
     }
 
     /**
-     * Виявлення Python за заголовками, HTML та фреймворками.
+     * Python detection from headers, HTML and frameworks.
      * @return array{present: bool, version: ?string, source: ?string}
      */
     private function detectPython(array $headers, ?string $html, array $frameworks = []): array
@@ -1965,7 +1965,7 @@ final class Detector
             }
         }
 
-        // Інференс за фреймворками Python
+        // Inference from Python frameworks
         if (!$present) {
             foreach ($frameworks as $fw) {
                 $n = $fw['name'] ?? '';
@@ -1981,15 +1981,15 @@ final class Detector
     }
 
     /**
-     * Будує уніфіковану секцію Веб-сервер (на всю ширину) з усіма підсистемами.
+     * Build a unified Web server section (full width) with all subsystems.
      */
     private function buildUnifiedServer(array $serverInfo, ?array $cdn, array $dbInfo, array $nodeInfo, array $pythonInfo): array
     {
         $result = $serverInfo;
 
-        // PHP вже у $serverInfo (php_version / php_present / php_source) — залишаємо як є
+        // PHP is already in $serverInfo (php_version / php_present / php_source) — leave as is
 
-        // Узгоджений HTTP-протокол основного запиту (реальний факт про стек).
+        // Negotiated HTTP protocol of the main request (a real fact about the stack).
         $result['http_version'] = $this->httpVersion;
 
         // Node.js
@@ -2006,7 +2006,7 @@ final class Detector
         if ($cdn !== null) {
             $result['cdn_provider'] = $cdn['provider'] ?? null;
             $result['cdn_detection'] = $cdn['detection'] ?? null;
-            // Зберігаємо додаткові поля CDN для дебагу, але не обов'язково
+            // Keep extra CDN fields for debugging, but they are optional
             foreach ($cdn as $k => $v) {
                 if (!in_array($k, ['provider', 'detection'], true)) {
                     $result['cdn_' . $k] = $v;
@@ -2017,7 +2017,7 @@ final class Detector
             $result['cdn_detection'] = null;
         }
 
-        // БД
+        // DB
         $result['dbms'] = $dbInfo['dbms'] ?? null;
         $result['db_version'] = $dbInfo['version'] ?? null;
         $result['db_source'] = $dbInfo['source'] ?? null;
@@ -2031,9 +2031,9 @@ final class Detector
     }
 
     /**
-     * Додаткова проба заголовків на PHP-ендпоінтах, де X-Powered-By часто не приховано кешем.
-     * Перевіряє /wp-login.php, /index.php, /xmlrpc.php коротким HEAD-запитом.
-     * Повертає ['version'=>string,'source'=>string] або null.
+     * Extra header probing for PHP on endpoints where X-Powered-By is often not hidden by cache.
+     * Checks /wp-login.php, /index.php, /xmlrpc.php with a short HEAD request.
+     * Returns ['version'=>string,'source'=>string] or null.
      */
     private function probePhpVersionViaHeaders(): ?array
     {
@@ -2067,7 +2067,7 @@ final class Detector
     }
 
     /**
-     * Виконує HEAD/GET запит і повертає масив заголовків (рядки "Name: value") або [].
+     * Perform a HEAD/GET request and return an array of headers ("Name: value" lines) or [].
      */
     private function fetchHeaders(string $url): array
     {
@@ -2079,7 +2079,7 @@ final class Detector
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_HEADER => true,
-                CURLOPT_NOBODY => true, // HEAD — достатньо заголовків
+                CURLOPT_NOBODY => true, // HEAD is enough for headers
                 CURLOPT_FOLLOWLOCATION => false,
                 CURLOPT_TIMEOUT => 3,
                 CURLOPT_CONNECTTIMEOUT => 2,
@@ -2095,10 +2095,10 @@ final class Detector
             if ($resp === false || $code < 200 || $code >= 400) {
                 return [];
             }
-            // При NOBODY тіло відсутнє, тому весь resp — заголовки
+            // With NOBODY the body is absent, so the whole resp is headers
             return $this->parseRawHeaders((string)$resp);
         }
-        // Фолбек через get_headers
+        // Fallback via get_headers
         $headers = @get_headers($url, 1);
         if (!is_array($headers)) {
             return [];
@@ -2115,10 +2115,10 @@ final class Detector
     }
 
     /**
-     * Строга перевірка наявності відкритого phpinfo-файлу.
-     * Повертає null якщо файл не існує / не є справжнім phpinfo,
-     * інакше масив ['isPhpInfo'=>bool,'version'=>?string].
-     * Вимоги: HTTP 200 + наявність <title>phpinfo або PHP Version.
+     * Strict check for an exposed phpinfo file.
+     * Returns null if the file does not exist / is not a genuine phpinfo,
+     * otherwise an array ['isPhpInfo'=>bool,'version'=>?string].
+     * Requirements: HTTP 200 + <title>phpinfo or PHP Version presence.
      *
      * @return array{isPhpInfo: bool, version: ?string}|null
      */
@@ -2189,14 +2189,14 @@ final class Detector
     }
 
     /**
-     * Дистанційне визначення СУБД сайту, що перевіряється.
-     * Намагається точно встановити DBMS та її версію (MySQL/MariaDB/PostgreSQL/SQLite/Progress/MSSQL/Oracle).
-     * Джерела в порядку пріоритету:
-     *  1) phpinfo (строгий, HTTP 200 + title) — парсить Client API version / Server version
-     *  2) витік у HTML (SQL-ошибки з версією)
-     *  3) заголовки X-DB-* (рідко)
-     *  4) інференс за CMS/фреймворком (WordPress→ MySQL/MariaDB без версії)
-     * Якщо точну версію дистанційно визначити неможливо — повертає detected=false або version=null з поясненням.
+     * Remote DBMS detection for the scanned site.
+     * Tries to pin down the DBMS and its version (MySQL/MariaDB/PostgreSQL/SQLite/Progress/MSSQL/Oracle).
+     * Sources in priority order:
+     *  1) phpinfo (strict, HTTP 200 + title) — parses Client API version / Server version
+     *  2) leak in HTML (SQL errors with a version)
+     *  3) X-DB-* headers (rare)
+     *  4) inference from CMS/framework (WordPress→ MySQL/MariaDB without a version)
+     * If the exact version cannot be determined remotely — returns detected=false or version=null with an explanation.
      *
      * @return array{detected: bool, dbms: ?string, version: ?string, source: ?string, note: string, evidence: ?string}
      */
@@ -2206,7 +2206,7 @@ final class Detector
         $htmlLower = $html !== null ? strtolower($html) : '';
         $htmlRaw = $html ?? '';
 
-        // 1) Спроба через phpinfo (найточніше — дає і тип, і версію)
+        // 1) Try phpinfo (most accurate — gives both type and version)
         $phpInfoBody = $this->fetchPhpInfoBody();
         if ($phpInfoBody !== null) {
             $parsed = $this->parseDbFromPhpInfo($phpInfoBody);
@@ -2226,7 +2226,7 @@ final class Detector
             }
         }
 
-        // 2) Заголовки, що прямо вказують на БД (рідко, але точно)
+        // 2) Headers that directly point to a DB (rare, but exact)
         foreach ($headers as $h) {
             $colon = strpos($h, ':');
             if ($colon === false) continue;
@@ -2246,7 +2246,7 @@ final class Detector
             }
         }
 
-        // 3) Витік у HTML — пошук SQL-помилок з версією
+        // 3) Leak in HTML — search for SQL errors with a version
         if ($html !== null) {
             $patterns = [
                 'MySQL' => '~MySQL[^<]{0,80}?([0-9]+\.[0-9]+(?:\.[0-9]+)?)~i',
@@ -2260,7 +2260,7 @@ final class Detector
             foreach ($patterns as $dbms => $pat) {
                 if (preg_match($pat, $htmlRaw, $m)) {
                     $ver = $m[1] ?? null;
-                    // Перевіряємо, що поруч є ознаки помилки БД, щоб не ловити випадкові згадки
+                    // Check that error-DB signs are nearby, so random mentions are not caught
                     $hasError = preg_match('~SQLSTATE|SQL syntax|server has gone away|pg_query|sqlite|ORA-|Progress error~i', $htmlRaw);
                     if ($ver !== null || $hasError) {
                         return [
@@ -2276,7 +2276,7 @@ final class Detector
                     }
                 }
             }
-            // Легший пошук без версії — просто згадка БД в контексті помилки
+            // Lighter search without a version — just a DB mention in an error context
             if (preg_match('~SQLSTATE|MySQL server has gone away|MariaDB server version|pg_query\(\)|SQLite3::|Progress OpenEdge|Microsoft SQL Server|ORA-[0-9]+~i', $htmlRaw, $m)) {
                 $guess = 'MySQL';
                 $low = strtolower($m[0]);
@@ -2297,7 +2297,7 @@ final class Detector
             }
         }
 
-        // 4) Інференс за CMS / фреймворком (ймовірно, без точної версії)
+        // 4) Inference from CMS / framework (likely, without an exact version)
         $phpCms = ['WordPress','Joomla','Drupal','OpenCart','PrestaShop','Magento','1С-Бітрікс','MODX','phpBB','vBulletin'];
         $cmsList = [];
         foreach ($cms as $c) {
@@ -2305,7 +2305,7 @@ final class Detector
             if (in_array($n, $phpCms, true)) $cmsList[] = $n;
         }
         if (!empty($cmsList)) {
-            // WordPress/Joomla/Drupal традиційно працюють на MySQL/MariaDB
+            // WordPress/Joomla/Drupal traditionally run on MySQL/MariaDB
             return [
                 'detected' => true,
                 'dbms' => 'MySQL / MariaDB',
@@ -2332,7 +2332,7 @@ final class Detector
             ];
         }
 
-        // 5) Нічого не знайдено — точну СУБД визначити неможливо
+        // 5) Nothing found — the exact DBMS cannot be determined
         return [
             'detected' => false,
             'dbms' => null,
@@ -2344,7 +2344,7 @@ final class Detector
     }
 
     /**
-     * Отримує тіло phpinfo, якщо файл відкрито (строгий HTTP 200 + маркери), інакше null.
+     * Fetch the phpinfo body if the file is open (strict HTTP 200 + markers), otherwise null.
      */
     private function fetchPhpInfoBody(): ?string
     {
@@ -2355,7 +2355,7 @@ final class Detector
         foreach ($candidates as $u) {
             $probe = $this->probePhpInfo($u);
             if ($probe !== null && ($probe['isPhpInfo'] ?? false)) {
-                // Повторно завантажуємо тіло (probe вже перевірив, але body не повертав)
+                // Re-fetch the body (probe already checked it but did not return the body)
                 if (function_exists('curl_init')) {
                     $ch = curl_init($u);
                     if ($ch === false) continue;
@@ -2387,7 +2387,7 @@ final class Detector
     }
 
     /**
-     * Парсить СУБД та версію з HTML phpinfo.
+     * Parse DBMS and version from phpinfo HTML.
      * @return array{dbms: string, version: ?string, evidence: ?string}|null
      */
     private function parseDbFromPhpInfo(string $body): ?array
@@ -2409,12 +2409,12 @@ final class Detector
                 $version = $m[1] ?? null;
                 $evidence = mb_substr(trim(preg_replace('~\s+~u', ' ', $m[0])), 0, 160);
             } else {
-                // Знайдено секцію БД без версії — все одно фіксуємо тип
+                // A DB section found without a version — still record the type
                 $evidence = $cfg['needle'];
             }
             return ['dbms' => $dbms, 'version' => $version, 'evidence' => $evidence];
         }
-        // Додатково: якщо є pdo_mysql / mysqli — це MySQL/MariaDB без точної версії
+        // Additionally: if pdo_mysql / mysqli is present — this is MySQL/MariaDB without an exact version
         if (stripos($body, 'pdo_mysql') !== false || stripos($body, 'mysqli') !== false) {
             return ['dbms' => 'MySQL / MariaDB', 'version' => null, 'evidence' => 'pdo_mysql/mysqli'];
         }
@@ -2422,14 +2422,14 @@ final class Detector
     }
 
     /**
-     * Парсер заголовка Server: nginx/1.24.0, Apache/2.4.52 (Ubuntu),
-     * LiteSpeed, Microsoft-IIS/10.0, cloudflare, openresty/1.21.4.1 тощо.
-     * Вміє розбирати СКЛАДЕНІ значення ("nginx/1.24.0 (Ubuntu)",
+     * Server header parser: nginx/1.24.0, Apache/2.4.52 (Ubuntu),
+     * LiteSpeed, Microsoft-IIS/10.0, cloudflare, openresty/1.21.4.1, etc.
+     * Can parse COMPOUND values ("nginx/1.24.0 (Ubuntu)",
      * "Apache/2.4.52 (Ubuntu) OpenSSL/1.1.1f", "Server: DPS/2.0 + nginx")
-     * як у Wappalyzer: шукає перший ВІДОМИЙ серверний токен, нормалізує назву.
-     * Додатково збирає вторинні токени (OpenSSL/mod_ssl/PHP) у 'extras'.
-     * Повертає масив ['name' => ..., 'version' => string|null, 'extras' => array]
-     * або null для порожніх/невалідних.
+     * as in Wappalyzer: find the first KNOWN server token, normalize the name.
+     * Additionally collects secondary tokens (OpenSSL/mod_ssl/PHP) into 'extras'.
+     * Returns ['name' => ..., 'version' => string|null, 'extras' => array]
+     * or null for empty/invalid.
      */
     private function parseServerHeader(string $value): ?array
     {
@@ -2438,7 +2438,7 @@ final class Detector
             return null;
         }
 
-        // Нормалізація відомих назв (різні написання → канонічна).
+        // Normalize known names (different spellings → canonical).
         $normalize = static function (string $name): string {
             $low = strtolower($name);
             $map = [
@@ -2459,7 +2459,7 @@ final class Detector
             if (isset($map[$low])) {
                 return $map[$low];
             }
-            // nginx/Apache/Caddy/Lighttpd/Cherokee/Squid/Varnish/Envoy/Tengine/Cowboy/Kestrel — як є, з великої
+            // nginx/Apache/Caddy/Lighttpd/Cherokee/Squid/Varnish/Envoy/Tengine/Cowboy/Kestrel — as is, capitalized
             $keep = ['nginx', 'apache', 'caddy', 'lighttpd', 'cherokee', 'squid', 'varnish', 'envoy', 'tengine', 'cowboy', 'kestrel', 'haproxy', 'trafficserver'];
             if (in_array($low, $keep, true)) {
                 return ucfirst($low) === 'Nginx' ? 'nginx' : $name;
@@ -2467,10 +2467,10 @@ final class Detector
             return $name;
         };
 
-        // Збираємо всі токени "name[/version]" зі значення.
+        // Collect all "name[/version]" tokens from the value.
         if (preg_match_all('~([A-Za-z][A-Za-z0-9\-\+\._]*)(?:/([0-9][0-9A-Za-z\.\-]+))?~', $value, $all, PREG_SET_ORDER)) {
             $known = ['nginx', 'apache', 'litespeed', 'openlitespeed', 'openresty', 'caddy', 'microsoft-iis', 'iis', 'cloudflare', 'cloudfront', 'amazons3', 's3', 'akamai', 'akamaighost', 'netdna-cache', 'gws', 'varnish', 'squid', 'envoy', 'lighttpd', 'cherokee', 'tengine', 'haproxy', 'cowboy', 'kestrel', 'bigip'];
-            // Вторинні токени з версіями, які варто показати окремо (реальні факти).
+            // Secondary versioned tokens worth showing separately (real facts).
             $extras = [];
             foreach ($all as $tok) {
                 $lowTok = strtolower($tok[1]);
@@ -2484,14 +2484,14 @@ final class Detector
                 $low = strtolower($tok[1]);
                 if (in_array($low, $known, true)) {
                     $ver = isset($tok[2]) && $tok[2] !== '' ? $tok[2] : null;
-                    // Відсікаємо сміття на кшталт версії "(Ubuntu)" без цифр на початку — regex вже вимагає цифру.
+                    // Filter out junk like a "(Ubuntu)" version without leading digits — the regex already requires a digit.
                     return ['name' => $normalize($tok[1]), 'version' => $ver, 'extras' => $extras];
                 }
             }
-            // Відомого токена немає — повертаємо перший осмислений токен як є
-            // (напр. "DPS/2.0", "QRATOR", кастомний WAF).
+            // No known token — return the first meaningful token as is
+            // (e.g. "DPS/2.0", "QRATOR", custom WAF).
             $first = $all[0];
-            // Пропускаємо службові токени на кшталт "Ubuntu", "OpenSSL", "PHP", "mod_ssl".
+            // Skip service tokens like "Ubuntu", "OpenSSL", "PHP", "mod_ssl".
             foreach ($all as $tok) {
                 $low = strtolower($tok[1]);
                 if (in_array($low, ['ubuntu', 'debian', 'openssl', 'mod_ssl', 'php', 'mod_perl', 'mod_wsgi', 'unix'], true)) {
@@ -2508,10 +2508,10 @@ final class Detector
     }
 
     /**
-     * Визначення CDN (мережі доставки контенту).
+     * CDN detection (content delivery network).
      *
-     * Перевіряє заголовки та HTML за конфігом CDN_SIGNATURES.
-     * Повертає масив з полями: provider, detection + додаткові поля (ray_id, pop, served_by тощо).
+     * Checks headers and HTML against the CDN_SIGNATURES config.
+     * Returns an array with fields: provider, detection + extra fields (ray_id, pop, served_by, etc.).
      */
     private function detectCdn(array $headers, string $html): ?array
     {
@@ -2522,7 +2522,7 @@ final class Detector
             $detection = null;
             $extra = [];
 
-            // 1. Специфічні заголовки
+            // 1. Specific headers
             foreach ($cfg['headers'] ?? [] as $hc) {
                 foreach ($headers as $h) {
                     $colon = strpos($h, ':');
@@ -2562,7 +2562,7 @@ final class Detector
                 }
             }
 
-            // 2. Заголовок Server
+            // 2. Server header
             if (!empty($cfg['server_match'])) {
                 foreach ($headers as $h) {
                     $colon = strpos($h, ':');
@@ -2581,7 +2581,7 @@ final class Detector
                 }
             }
 
-            // 3. Заголовок Via
+            // 3. Via header
             if (!empty($cfg['via_match'])) {
                 foreach ($headers as $h) {
                     $colon = strpos($h, ':');
@@ -2611,7 +2611,7 @@ final class Detector
             }
         }
 
-        // 4. Фолбек за HTML-вмістом
+        // 4. Fallback on HTML content
         if (empty($candidates)) {
             foreach (self::CDN_SIGNATURES as $provider => $cfg) {
                 foreach ($cfg['html_signs'] ?? [] as $sign) {
@@ -2619,7 +2619,7 @@ final class Detector
                         $candidates[] = [
                             'provider' => $provider,
                             'detection' => 'HTML content (' . $sign . ')',
-                            'priority' => $cfg['priority'] + 100, // нижчий пріоритет за заголовки
+                            'priority' => $cfg['priority'] + 100, // lower priority than headers
                             'extra' => [],
                         ];
                         break;
@@ -2726,8 +2726,8 @@ final class Detector
     }
 
     /**
-     * Захоплення HTTP-заголовків останнього запиту.
-     * Працює з PHP 8.5+ (http_get_last_response_headers) та попередніми версіями.
+     * Capture HTTP headers of the last request.
+     * Works with PHP 8.5+ (http_get_last_response_headers) and earlier versions.
      */
     private function captureHeaders(): array
     {
@@ -2739,15 +2739,15 @@ final class Detector
     }
 
     /**
-     * Виявлення теми та плагінів WordPress на основі HTML і додаткових запитів.
+     * WordPress theme and plugin detection from HTML plus extra requests.
      */
     private function detectWordPressDetails(string $html, ?string $generator = null): ?array
     {
         $theme = $this->detectWordPressTheme($html);
         $parentTheme = null;
 
-        // Якщо активна тема — child, спочатку завантажуємо info про parent-тему,
-        // щоб використати її "Tested up to" для визначення версії WP.
+        // If the active theme is a child, first load info about the parent theme
+        // to use its "Tested up to" for WP version detection.
         if (is_array($theme) && !empty($theme['parent_slug'])) {
             $parentTheme = $this->fetchThemeInfo($theme['parent_slug']);
         }
@@ -2793,18 +2793,18 @@ final class Detector
     }
 
     /**
-     * Визначення адреси входу в адмін-панель WordPress.
+     * WordPress admin login URL detection.
      *
-     * Логіка:
-     *  1) Перевіряє стандартні адреси `/wp-login.php` та `/wp-admin/` —
-     *     якщо хоча б одна повертає ознаки сторінки входу (200 з формою
-     *     або 302 на wp-login), повертає її як `is_default = true`.
-     *  2) Якщо стандартні повертають 404 та `/wp-admin/` редиректить на
-     *     кастомний шлях — перевіряє ціль редиректу, чи це login-сторінка.
-     *  3) Інакше сканує HTML на наявність посилань, що містять login-like
-     *     ключові слова, і перевіряє кожен кандидат пробним запитом.
-     *  4) Якщо нічого не знайдено — повертає структуру з `is_hidden = true`
-     *     та поясненням для користувача.
+     * Logic:
+     *  1) Check standard addresses `/wp-login.php` and `/wp-admin/` —
+     *     if at least one shows login page signs (200 with a form
+     *     or a 302 to wp-login), return it as `is_default = true`.
+     *  2) If the standard ones return 404 and `/wp-admin/` redirects to
+     *     a custom path — check the redirect target for a login page.
+     *  3) Otherwise scan HTML for links containing login-like
+     *     keywords and probe each candidate.
+     *  4) If nothing is found — return a structure with `is_hidden = true`
+     *     and an explanation for the user.
      *
      * @return array{url: ?string, path: ?string, is_default: bool, is_custom: bool, is_hidden: bool, status_code: ?int, note: string, detection_method: ?string}
      */
@@ -2814,16 +2814,16 @@ final class Detector
         $origin = $this->scheme . '://' . parse_url($this->url, PHP_URL_HOST)
             . (parse_url($this->url, PHP_URL_PORT) ? ':' . parse_url($this->url, PHP_URL_PORT) : '');
 
-        // 1. Стандартні адреси
+        // 1. Standard addresses
         $defaults = ['/wp-login.php', '/wp-admin/'];
         foreach ($defaults as $path) {
             $probe = $this->probeUrlForLogin($base . $path);
             if ($probe['is_login']) {
                 $fullUrl = $base . $path;
-                // Для /wp-admin/ може бути 302 → location містить повну адресу логіну
+                // For /wp-admin/ a 302 may occur → location holds the full login URL
                 if ($path === '/wp-admin/' && !empty($probe['redirect_location'])) {
                     $loc = $probe['redirect_location'];
-                    // Якщо редирект веде на кастомний шлях, що є логіном — показати його
+                    // If the redirect leads to a custom path that is a login — show it
                     if (!str_contains(strtolower($loc), 'wp-login.php') && !str_contains(strtolower($loc), 'wp-admin')) {
                         $customProbe = $this->probeUrlForLogin($this->resolveUrl($loc, $origin));
                         if ($customProbe['is_login']) {
@@ -2853,15 +2853,15 @@ final class Detector
             }
         }
 
-        // Якщо /wp-admin/ редиректить на кастомний шлях — перевіримо його навіть коли probe не дав is_login прямо
+        // If /wp-admin/ redirects to a custom path — check it even when the probe did not directly report is_login
         $adminProbe = $this->probeUrlForLogin($base . '/wp-admin/');
         if (!empty($adminProbe['redirect_location'])) {
             $loc = $adminProbe['redirect_location'];
             $locLower = strtolower($loc);
-            // Якщо редирект не на wp-login.php і не 404-сторінку — можливо це кастомний логін
+            // If the redirect is not to wp-login.php and not a 404 page — it may be a custom login
             if (!str_contains($locLower, 'wp-login.php') && $locLower !== '' && $adminProbe['status'] >= 300 && $adminProbe['status'] < 400) {
                 $resolved = $this->resolveUrl($loc, $origin);
-                // Ігноруємо редиректи на головну або зовнішні домени
+                // Ignore redirects to the homepage or external domains
                 $resolvedHost = strtolower(parse_url($resolved, PHP_URL_HOST) ?? '');
                 $ownHost = strtolower(parse_url($origin, PHP_URL_HOST) ?? '');
                 if ($resolvedHost === $ownHost || $resolvedHost === '') {
@@ -2882,15 +2882,15 @@ final class Detector
             }
         }
 
-        // 2. Сканування HTML на кандидатів (посилання з login/admin у href)
+        // 2. Scan HTML for candidates (links with login/admin in href)
         $candidates = $this->extractLoginCandidates($html);
         foreach ($candidates as $candidatePath) {
-            // Пропускаємо стандартні — вже перевірені
+            // Skip standard ones — already checked
             if (in_array($candidatePath, ['/wp-login.php', '/wp-admin', '/wp-admin/'], true)) {
                 continue;
             }
             $full = $this->resolveUrl($candidatePath, $origin);
-            // Якщо кандидат збігається з base (тобто відносний без слеша) — нормалізуємо
+            // If the candidate matches base (i.e. relative without a slash) — normalize it
             if (!str_starts_with($candidatePath, '/') && !preg_match('~^https?://~i', $candidatePath)) {
                 $full = $base . '/' . ltrim($candidatePath, '/');
             }
@@ -2909,7 +2909,7 @@ final class Detector
             }
         }
 
-        // 3. Нічого не знайдено — приховано
+        // 3. Nothing found — hidden
         return [
             'url' => null,
             'path' => null,
@@ -2923,7 +2923,7 @@ final class Detector
     }
 
     /**
-     * Пробний запит до URL для перевірки, чи це сторінка входу WordPress.
+     * Probe a URL to check whether it is a WordPress login page.
      *
      * @return array{is_login: bool, status: ?int, redirect_location: ?string, body: ?string}
      */
@@ -2961,12 +2961,12 @@ final class Detector
             $rawHeaders = substr((string)$resp, 0, $headerSize);
             $body = substr((string)$resp, $headerSize);
             $result['body'] = $body;
-            // Також перевіряємо через curl_getinfo redirect_url якщо заголовок не розпарсився
+            // Also check via curl_getinfo redirect_url if the header was not parsed
             if (is_string($redirectUrl) && $redirectUrl !== '') {
                 $result['redirect_location'] = $result['redirect_location'] ?? $redirectUrl;
             }
 
-            // Знайти Location заголовок (пріоритет над CURLINFO_REDIRECT_URL)
+            // Find the Location header (takes priority over CURLINFO_REDIRECT_URL)
             foreach ($this->parseRawHeaders($rawHeaders) as $h) {
                 if (stripos($h, 'Location:') === 0) {
                     $result['redirect_location'] = trim(substr($h, 9));
@@ -2974,21 +2974,21 @@ final class Detector
                 }
             }
 
-            // 1) Редирект на login
+            // 1) Redirect to login
             if ($code >= 300 && $code < 400 && $result['redirect_location'] !== null) {
                 $locLower = strtolower($result['redirect_location']);
                 if (str_contains($locLower, 'wp-login') || str_contains($locLower, 'wp-admin') || str_contains($locLower, 'login') || str_contains($locLower, 'dashboard')) {
-                    // Відсікаємо канонічні редиректи типу lanet.ua/wp-login.php → www.lanet.ua/wp-login.php
-                    // (той самий шлях, лише інший хост/схема) — вони не означають наявність WordPress
+                    // Filter out canonical redirects like lanet.ua/wp-login.php → www.lanet.ua/wp-login.php
+                    // (same path, only a different host/scheme) — they do not indicate WordPress presence
                     $requestedPath = strtolower(parse_url($url, PHP_URL_PATH) ?? '/');
-                    // redirect_location може бути відносним або абсолютним
+                    // redirect_location may be relative or absolute
                     $redirectPath = strtolower(parse_url($result['redirect_location'], PHP_URL_PATH) ?? '/');
-                    // Нормалізуємо trailing slash для порівняння
+                    // Normalize the trailing slash for comparison
                     $normReq = rtrim($requestedPath, '/') ?: '/';
                     $normRedir = rtrim($redirectPath, '/') ?: '/';
                     if ($normReq === $normRedir) {
-                        // Той самий шлях — канонічний редирект (www ↔ non-www, http ↔ https)
-                        // Не вважаємо це ознакою WordPress-логіну
+                        // Same path — canonical redirect (www ↔ non-www, http ↔ https)
+                        // Do not treat this as a WordPress-login sign
                         return $result;
                     }
                     if (str_contains($locLower, 'wp-login') || str_contains($locLower, 'wp-admin')) {
@@ -2996,11 +2996,11 @@ final class Detector
                         return $result;
                     }
                 }
-                // Для кастомних — не вважаємо одразу, нехай викликач перевірить ціль окремо
+                // For custom ones — do not conclude immediately, let the caller check the target separately
                 return $result;
             }
 
-            // 2) 200 з ознаками форми входу
+            // 2) 200 with login form signs
             if ($code === 200 && $body !== '') {
                 if ($this->isWpLoginPage($body, $url)) {
                     $result['is_login'] = true;
@@ -3008,7 +3008,7 @@ final class Detector
                 }
             }
 
-            // 3) 403 з ознаками login (деякі хости віддають 403 але тіло — login)
+            // 3) 403 with login signs (some hosts return 403 but the body is a login)
             if ($code === 403 && $body !== '' && $this->isWpLoginPage($body, $url)) {
                 $result['is_login'] = true;
                 return $result;
@@ -3017,7 +3017,7 @@ final class Detector
             return $result;
         }
 
-        // Fallback без cURL — через get_headers + file_get_contents
+        // Fallback without cURL — via get_headers + file_get_contents
         $headers = @get_headers($url, true);
         if (is_array($headers)) {
             $code = 0;
@@ -3055,12 +3055,12 @@ final class Detector
     }
 
     /**
-     * Перевіряє, чи HTML є сторінкою входу WordPress.
+     * Check whether HTML is a WordPress login page.
      */
     private function isWpLoginPage(string $body, string $url = ''): bool
     {
         $lower = strtolower($body);
-        // Найнадійніші маркери форми входу WP
+        // Most reliable WordPress login form markers
         if (str_contains($lower, 'id="loginform"') || str_contains($lower, "id='loginform'")) {
             return true;
         }
@@ -3070,14 +3070,14 @@ final class Detector
         if (str_contains($lower, 'name="log"') && str_contains($lower, 'name="pwd"') && str_contains($lower, 'wordpress')) {
             return true;
         }
-        // Заголовок wp-login + форма
+        // wp-login header + form
         if (str_contains($lower, 'wp-login.php') && str_contains($lower, 'wordpress') && str_contains($lower, '<form')) {
-            // Переконаємося, що це не просто згадка в контенті, а саме сторінка логіну
+            // Make sure this is not just a content mention but the actual login page
             if (preg_match('~<form[^>]*\baction\s*=\s*["\'][^"\']*wp-login\.php["\']~i', $body)) {
                 return true;
             }
         }
-        // Фолбек: якщо URL — це wp-login.php і в тілі є "log in" + wordpress
+        // Fallback: if the URL is wp-login.php and the body has "log in" + wordpress
         if (str_contains(strtolower($url), 'wp-login.php') && str_contains($lower, 'wordpress') && (str_contains($lower, 'log in') || str_contains($lower, 'увійти') || str_contains($lower, 'вхід'))) {
             return true;
         }
@@ -3085,9 +3085,9 @@ final class Detector
     }
 
     /**
-     * Витягує кандидатів на кастомний login-шлях з HTML.
+     * Extract custom login-path candidates from HTML.
      *
-     * @return string[] список шляхів/URL (наприклад, "/my-login/", "/hidden-admin/")
+     * @return string[] list of paths/URLs (e.g. "/my-login/", "/hidden-admin/")
      */
     private function extractLoginCandidates(string $html): array
     {
@@ -3100,23 +3100,23 @@ final class Detector
                 if (str_starts_with($lowerHref, 'javascript:') || str_starts_with($lowerHref, 'mailto:') || str_starts_with($lowerHref, 'tel:') || str_starts_with($lowerHref, 'data:')) {
                     continue;
                 }
-                // Пропускаємо статичні ресурси
+                // Skip static resources
                 if (preg_match('~\.(css|js|mjs|jpg|jpeg|png|gif|webp|avif|svg|woff2?|ttf|eot|pdf|zip|mp4|mp3)(?:[?#]|$)~i', $lowerHref)) {
                     continue;
                 }
-                // Пропускаємо wp-content / wp-includes
+                // Skip wp-content / wp-includes
                 if (str_contains($lowerHref, '/wp-content/') || str_contains($lowerHref, '/wp-includes/')) {
                     continue;
                 }
-                // Лише ті, що містять login-like ключові слова
+                // Only those containing login-like keywords
                 if (!preg_match('~(login|log-in|signin|sign-in|admin|dashboard|auth|enter|my-login|secret)~i', $href)) {
                     continue;
                 }
-                // Виключаємо logout
+                // Exclude logout
                 if (str_contains($lowerHref, 'logout') || str_contains($lowerHref, 'action=logout')) {
                     continue;
                 }
-                // Нормалізація
+                // Normalization
                 $path = strtok($href, '#') ?: $href;
                 if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://')) {
                     $parts = parse_url($path);
@@ -3124,20 +3124,20 @@ final class Detector
                     $host = strtolower($parts['host']);
                     $ownHost = strtolower(parse_url($this->url, PHP_URL_HOST) ?? '');
                     if ($host !== $ownHost && $host !== 'www.' . $ownHost && $ownHost !== 'www.' . $host) {
-                        continue; // чужий домен
+                        continue; // foreign domain
                     }
                     $path = ($parts['path'] ?? '/') . (isset($parts['query']) ? '?' . $parts['query'] : '');
                 } elseif (str_starts_with($path, '//')) {
                     continue;
                 } elseif (!str_starts_with($path, '/')) {
-                    // відносний шлях — перетворюємо на абсолютний
+                    // relative path — convert to absolute
                     if (!str_contains($path, '/') && strlen($path) < 3) continue;
                     if (str_starts_with($path, './')) $path = substr($path, 2);
                     $path = '/' . ltrim($path, '/');
                 }
                 if (!str_starts_with($path, '/')) continue;
                 if (strlen($path) > 160) continue;
-                // Дублікати
+                // Duplicates
                 $candidates[$path] = true;
                 if (count($candidates) >= 20) break;
             }
@@ -3146,7 +3146,7 @@ final class Detector
     }
 
     /**
-     * Розв'язує відносний/абсолютний Location у повний URL.
+     * Resolve a relative/absolute Location into a full URL.
      */
     private function resolveUrl(string $location, string $origin): string
     {
@@ -3159,10 +3159,10 @@ final class Detector
     }
 
     /**
-     * Добирає версії плагінів із не-asset джерел на сторінці (лише для записів
-     * без версії — нічого не перезаписує):
-     * - Yoast SEO пише версію в коментар `<!-- ... Yoast SEO plugin vX.Y ... -->`;
-     * - All in One SEO пише версію в meta generator `All in One SEO (AIOSEO) X.Y`.
+     * Fill in plugin versions from non-asset sources on the page (only for entries
+     * without a version — never overwrites):
+     * - Yoast SEO writes the version into a comment `<!-- ... Yoast SEO plugin vX.Y ... -->`;
+     * - All in One SEO writes the version into the meta generator `All in One SEO (AIOSEO) X.Y`.
      *
      * @param array<int, array<string, mixed>> $plugins
      */
@@ -3194,31 +3194,31 @@ final class Detector
     }
 
     /**
-     * Визначення версії WordPress з надійних джерел.
+     * WordPress version detection from reliable sources.
      *
-     * Пріоритет (повертає СТРУКТУРОВАНУ інформацію, а не просто рядок):
-     *   1. `<meta name="generator" content="WordPress X.Y.Z">` — генерується динамічно
-     *      при кожному запиті, тож це найнадійніший сигнал. Повертає ТОЧНУ версію.
-     *   2. `/readme.html` — статичний файл, що постачається з ядром. Може бути
-     *      застарілим, тому використовується як фолбек. Повертає ТОЧНУ версію.
-     *   3. Header `Tested up to: X.Y` у `style.css` активної (або parent-) теми —
-     *      автор теми оновлює це поле після тестування з новою версією WP. Дуже
-     *      близький сигнал до точної версії (зазвичай співпадає або відстає на 1 мінор).
-     *   4. REST endpoints `/wp-json/` — дає МІНІМАЛЬНУ нижню межу версії
-     *      (наявність `wp-abilities/v1` означає ≥ 7.0).
-     *   5. Twemoji-версія з `wp-includes/js/wp-emoji-release.min.js` — додатковий
-     *      сигнал для новіших версій WP (≥ 6.0).
+     * Priority (returns STRUCTURED info, not just a string):
+     *   1. `<meta name="generator" content="WordPress X.Y.Z">` — generated dynamically
+     *      on every request, so this is the most reliable signal. Returns the EXACT version.
+     *   2. `/readme.html` — a static file shipped with the core. May be
+     *      outdated, so it is used as a fallback. Returns the EXACT version.
+     *   3. `Tested up to: X.Y` header in the active (or parent) theme's `style.css` —
+     *      the theme author updates this field after testing with a new WP version. Very
+     *      close to the exact version (usually matches or lags by 1 minor).
+     *   4. REST endpoints `/wp-json/` — give a MINIMUM lower bound of the version
+     *      (presence of `wp-abilities/v1` means ≥ 7.0).
+     *   5. Twemoji version from `wp-includes/js/wp-emoji-release.min.js` — an extra
+     *      signal for newer WP versions (≥ 6.0).
      *
-     * Фолбек на `?ver=` у `/wp-includes/` для скриптів НЕ використовується: там часто
-     * зустрічається версія jQuery (`jquery.min.js?ver=3.7.1`), а не WordPress.
+     * No fallback on `?ver=` in `/wp-includes/` for scripts: it often
+     * holds the jQuery version (`jquery.min.js?ver=3.7.1`), not WordPress.
      *
-     * @param array<string, mixed>|null $theme        дані активної теми (з `detectWordPressTheme`)
-     * @param array<string, mixed>|null $parentTheme  дані parent-теми (з `fetchThemeInfo`), якщо є
+     * @param array<string, mixed>|null $theme        active theme data (from `detectWordPressTheme`)
+     * @param array<string, mixed>|null $parentTheme  parent theme data (from `fetchThemeInfo`), if any
      * @return array{
-     *   version: ?string,        // точна версія, якщо вдалося визначити
-     *   version_min: ?string,    // нижня межа версії з усіх доступних сигналів
+     *   version: ?string,        // exact version, if determined
+     *   version_min: ?string,    // lower version bound from all available signals
      *   source: string,          // 'generator' | 'readme' | 'theme_tested' | 'rest_api' | 'twemoji' | 'hidden'
-     *   note: ?string            // пояснення для користувача
+     *   note: ?string            // user-facing explanation
      * }
      */
     private function detectWordPressVersion(string $html, ?string $generator = null, ?array $theme = null, ?array $parentTheme = null): array
@@ -3230,7 +3230,7 @@ final class Detector
             'note' => null,
         ];
 
-        // 1. meta generator — найточніший сигнал (генерується динамічно).
+        // 1. meta generator — the most accurate signal (generated dynamically).
         $gen = $generator ?? $this->extractMeta($html, 'generator');
         if (is_string($gen) && $gen !== '' && preg_match('~^\s*WordPress\s+([0-9][0-9.]*(?:-[A-Za-z0-9.-]+)?)\s*$~i', $gen, $m)) {
             $result['version'] = $m[1];
@@ -3240,7 +3240,7 @@ final class Detector
             return $result;
         }
 
-        // 2. /readme.html — статичний файл ядра, може бути застарілим.
+        // 2. /readme.html — a static core file, may be outdated.
         $readme = $this->httpGet($this->url . '/readme.html', 6);
         if ($readme) {
             if (preg_match(
@@ -3256,9 +3256,9 @@ final class Detector
             }
         }
 
-        // 3. Header "Tested up to" у style.css.
-        // Спочатку дивимось активну тему, потім — parent-тему (бо child-теми
-        // часто не мають поля "Tested up to", а реальну версію задає parent).
+        // 3. "Tested up to" header in style.css.
+        // Look at the active theme first, then the parent theme (child themes
+        // often lack the "Tested up to" field; the parent defines the real version).
         $testedSource = null;
         $testedVersion = null;
         $testedThemeName = null;
@@ -3284,7 +3284,7 @@ final class Detector
             return $result;
         }
 
-        // 4-5. Нижня межа версії: REST endpoints + twemoji-версія.
+        // 4-5. Lower version bound: REST endpoints + twemoji version.
         $restMin = $this->detectWordPressVersionFromRest();
         $twemojiMin = $this->detectWordPressVersionFromTwemoji();
 
@@ -3310,12 +3310,12 @@ final class Detector
     }
 
     /**
-     * Визначає мінімальну нижню межу версії WordPress за наявністю REST endpoints.
-     * Це НЕ точна версія — лише гарантована нижня межа.
+     * Determine the minimum lower bound of the WordPress version from REST endpoints.
+     * This is NOT the exact version — only a guaranteed lower bound.
      *
-     * Маршрути WordPress 7.0+ (`wp-abilities/v1`, `wp-block-editor/v1`) додано, щоб
-     * уникнути ситуації, коли сайт на WP 7.x показує застарілу версію через те,
-     * що ми знаємо лише про маршрути до 6.6.
+     * WordPress 7.0+ routes (`wp-abilities/v1`, `wp-block-editor/v1`) were added so that
+     * a site on WP 7.x does not show an outdated version just because
+     * we only know routes up to 6.6.
      */
     private function detectWordPressVersionFromRest(): ?string
     {
@@ -3336,14 +3336,14 @@ final class Detector
 
         $namespaces = is_array($data['namespaces'] ?? null) ? $data['namespaces'] : [];
 
-        // Маппінг "наявний маршрут → мінімальна версія WP".
-        // Маршрути WP 7.0+ додано за release notes / dev-блогами.
+        // Mapping "present route → minimum WP version".
+        // WP 7.0+ routes added from release notes / dev blogs.
         $hints = [
             // WP 7.0+ — Abilities API
             '/wp-abilities/v1'                  => '7.0',
             '/wp-abilities/v1/categories'       => '7.0',
             '/wp-abilities/v1/abilities'        => '7.0',
-            // WP 7.0+ — Block editor REST namespace (експорт, navigation-fallback)
+            // WP 7.0+ — Block editor REST namespace (export, navigation-fallback)
             '/wp-block-editor/v1'               => '7.0',
             '/wp-block-editor/v1/export'        => '7.0',
             '/wp-block-editor/v1/navigation-fallback' => '7.0',
@@ -3381,7 +3381,7 @@ final class Detector
             }
         }
 
-        // Додаткова перевірка за простором імен (namespace)
+        // Extra namespace check
         foreach ($namespaces as $ns) {
             if (!is_string($ns)) {
                 continue;
@@ -3397,14 +3397,14 @@ final class Detector
     }
 
     /**
-     * Визначає мінімальну нижню межу версії WordPress за версією twemoji,
-     * яка завантажується з `wp-includes/js/wp-emoji-release.min.js`.
+     * Determine the minimum lower bound of the WordPress version from the twemoji version
+     * loaded from `wp-includes/js/wp-emoji-release.min.js`.
      *
-     * Це НЕ точний сигнал (twemoji може відставати від WP), але корисний як
-     * додаткова нижня межа для WP 6.0+, де версія twemoji оновлюється разом
-     * з ядром.
+     * This is NOT an exact signal (twemoji may lag behind WP), but it is useful as
+     * an extra lower bound for WP 6.0+, where the twemoji version is updated together
+     * with the core.
      *
-     * @return string|null мінімальна версія WP або null, якщо не вдалося визначити
+     * @return string|null minimum WP version or null if it could not be determined
      */
     private function detectWordPressVersionFromTwemoji(): ?string
     {
@@ -3419,9 +3419,9 @@ final class Detector
         $minor = (int)$m[2];
         $patch = (int)$m[3];
 
-        // Маппінг twemoji-версії → мінімальна версія WP.
-        // Значення підібрані за офіційними release notes WordPress.
-        // Якщо twemoji >= порога, повертаємо відповідну мінімальну версію WP.
+        // Map twemoji version → minimum WP version.
+        // Values picked from official WordPress release notes.
+        // If twemoji is at or above the threshold, return the matching minimum WP version.
         $map = [
             ['twemoji' => [15, 1, 0], 'wp' => '6.3'],
             ['twemoji' => [16, 0, 0], 'wp' => '6.6'],
@@ -3446,19 +3446,19 @@ final class Detector
     }
 
     /**
-     * Визначення усіх конструкторів сторінок, які використовуються на сайті.
+     * Detect all page builders used on the site.
      *
-     * Повертає масив — адже на сайті може одночасно бути і Elementor,
-     * і WPBakery, і комбінації інших.
+     * Returns an array — a site may use Elementor,
+     * WPBakery, and other combinations at the same time.
      *
-     * УВАГА: Gutenberg (Block Editor) сюди свідомо НЕ входить — він є ядром
-     * WordPress за замовчуванням і часто присутній паралельно з Elementor,
-     * тому його показ лише створює шум.
+     * NOTE: Gutenberg (Block Editor) is deliberately NOT included here — it is core
+     * WordPress by default and is often present alongside Elementor,
+     * so showing it would only add noise.
      *
-     * Для кожного кандидата перевіряє три рівні сигналів у порядку пріоритету:
-     *   1. body class    — найточніший
-     *   2. плагін        — підтверджує встановлення
-     *   3. сліди в HTML  — найзагальніший (класи блоків, атрибути, коментарі)
+     * For each candidate check three signal levels in priority order:
+     *   1. body class    — most accurate
+     *   2. plugin        — confirms installation
+     *   3. HTML traces   — most generic (block classes, attributes, comments)
      *
      * @return array<int, array{name:string,description:string,site:string,detection:string}>|null
      */
@@ -3567,7 +3567,7 @@ final class Detector
         foreach ($builders as $builder) {
             $method = null;
 
-            // 1. body class — найнадійніший сигнал
+            // 1. body class — the most reliable signal
             foreach ($builder['body_classes'] as $cls) {
                 if ($cls !== '' && str_contains($lowerBody, strtolower($cls))) {
                     $method = 'body_class';
@@ -3575,7 +3575,7 @@ final class Detector
                 }
             }
 
-            // 2. плагін у списку виявлених
+            // 2. plugin in the detected list
             if ($method === null) {
                 foreach ($builder['plugin_slugs'] as $slug) {
                     if (in_array(strtolower($slug), $pluginSlugs, true)) {
@@ -3585,7 +3585,7 @@ final class Detector
                 }
             }
 
-            // 3. характерні сліди в HTML
+            // 3. characteristic HTML traces
             if ($method === null) {
                 foreach ($builder['signs'] as $sign) {
                     if ($sign !== '' && str_contains($lowerHtml, strtolower($sign))) {
@@ -3609,7 +3609,7 @@ final class Detector
     }
 
     /**
-     * Визначення наявності WooCommerce та підключених модулів оплати/доставки.
+     * WooCommerce presence detection plus connected payment/shipping modules.
      */
     private function detectWooCommerce(string $html, array $plugins): ?array
     {
@@ -3634,7 +3634,7 @@ final class Detector
             }
         }
 
-        // Додаткові ознаки WooCommerce в HTML
+        // Extra WooCommerce signs in HTML
         if (!$hasWoo) {
             if (str_contains($lowerHtml, '/wp-content/plugins/woocommerce/')
                 || str_contains($lowerHtml, 'wc-ajax')
@@ -3735,18 +3735,18 @@ final class Detector
         $bodyClass = $this->extractBodyClass($html);
         $candidates = [];
 
-        // 1. Найнадійніше — body class з WP core (`body_class()`):
-        //    коли активна child-тема, WP додає і `wp-theme-XXX` (parent),
-        //    і `wp-child-theme-XXX` (active).
+        // 1. Most reliable — body class from WP core (`body_class()`):
+        //    when a child theme is active, WP adds both `wp-theme-XXX` (parent)
+        //    and `wp-child-theme-XXX` (active).
         if (preg_match('~wp-child-theme-([a-z0-9_-]+)~i', $bodyClass, $m)) {
             $slug = strtolower($m[1]);
-            $candidates[$slug] = ($candidates[$slug] ?? 0) + 200; // максимальний пріоритет
+            $candidates[$slug] = ($candidates[$slug] ?? 0) + 200; // top priority
         } elseif (preg_match('~wp-theme-([a-z0-9_-]+)~i', $bodyClass, $m)) {
             $slug = strtolower($m[1]);
             $candidates[$slug] = ($candidates[$slug] ?? 0) + 150;
         }
 
-        // 2. Прямі посилання на /wp-content/themes/SLUG/
+        // 2. Direct links to /wp-content/themes/SLUG/
         if (preg_match_all('~/wp-content/themes/([^/"\']+)/~i', $html, $matches)) {
             foreach ($matches[1] as $slug) {
                 $slug = strtolower(trim($slug));
@@ -3757,7 +3757,7 @@ final class Detector
             }
         }
 
-        // 3. Спроба отримати активну тему через /wp-json/ (деякі сайти відкривають)
+        // 3. Try to get the active theme via /wp-json/ (some sites expose it)
         $apiBody = $this->httpGet($this->url . '/wp-json/', 6);
         if ($apiBody) {
             $api = json_decode($apiBody, true);
@@ -3814,7 +3814,7 @@ final class Detector
                 $info['requires_at_least'] = $header['requiresAtLeast'];
             }
             if (!empty($header['template'])) {
-                // "Template:" у header вказує на parent-тему для дочірньої теми
+                // "Template:" in the header points to the parent theme for a child theme
                 $parentSlug = strtolower(trim($header['template']));
                 if ($parentSlug !== '' && $parentSlug !== $themeSlug) {
                     $info['parent_slug'] = $parentSlug;
@@ -3826,7 +3826,7 @@ final class Detector
     }
 
     /**
-     * Завантажує інформацію про тему (зазвичай parent) за її slug.
+     * Load theme info (usually the parent) by its slug.
      */
     private function fetchThemeInfo(string $slug): ?array
     {
@@ -3863,7 +3863,7 @@ final class Detector
     }
 
     /**
-     * Витягує значення атрибута class з тегу <body>.
+     * Extract the class attribute value from the <body> tag.
      */
     private function extractBodyClass(string $html): string
     {
@@ -3874,28 +3874,28 @@ final class Detector
     }
 
     /**
-     * Виявлення активних плагінів WordPress.
-     * Як у Wappalyzer: збирає slug'и з усіх asset-URL (/wp-content/plugins/SLUG/...)
-     * і одразу знімає версію з ?ver= (без додаткових HTTP-запитів).
-     * Версія з ?ver=, що повторюється у ≥4 різних плагінів, відкидається —
-     * це типово версія ядра WP, яку WP підставляє за замовчуванням.
+     * WordPress active plugin detection.
+     * As in Wappalyzer: collect slugs from all asset URLs (/wp-content/plugins/SLUG/...)
+     * and immediately take the version from ?ver= (no extra HTTP requests).
+     * A ?ver= value repeated in ≥4 different plugins is dropped —
+     * it is typically the WP core version that WP substitutes by default.
      */
     private function detectWordPressPlugins(string $html): array
     {
         $slugs = $this->extractPluginSlugs($html); // slug => ['count' => int, 'ver' => ?string]
         $this->dropSharedAssetVersions($slugs);
 
-        // Сабпейдж-запит: плагіни на кшталт Kama SpamBlock підключаються лише
-        // там, де є форма коментарів (сторінка запису), а не на головній.
-        // Permalink свіжого запису через REST (1 запит) + сама сторінка
-        // (1 запит, короткий таймаут). Невдача — мовчки пропускаємо.
+        // Subpage request: plugins like Kama SpamBlock are only loaded
+        // where there is a comments form (a post page), not on the homepage.
+        // Fresh post permalink via REST (1 request) + the page itself
+        // (1 request, short timeout). On failure — silently skip.
         $subHtml = $this->fetchWordPressSubpageSample($html);
         if (is_string($subHtml) && $subHtml !== '') {
             foreach ($this->extractPluginSlugs($subHtml) as $slug => $meta) {
                 if (!isset($slugs[$slug])) {
                     $slugs[$slug] = $meta;
                 } elseif ($slugs[$slug]['ver'] === null && $meta['ver'] !== null) {
-                    $slugs[$slug]['ver'] = $meta['ver']; // добрали версію з сабпейджа
+                    $slugs[$slug]['ver'] = $meta['ver']; // picked up the version from the subpage
                 }
             }
             $this->dropSharedAssetVersions($slugs);
@@ -3914,23 +3914,23 @@ final class Detector
             $resolvedSlugs[$slug] = true;
         }
 
-        // Маркери без asset-шляху: плагіни, що не підключають CSS/JS на
-        // просканованих сторінках, але лишають коментарі/атрибути
-        // (напр. Rank Math додає лише <!-- ... Rank Math ... -->).
-        // Словник — у WP_PLUGIN_HTML_MARKERS.
+        // Markers without an asset path: plugins that do not attach CSS/JS on
+        // the scanned pages but leave comments/attributes
+        // (e.g. Rank Math only adds <!-- ... Rank Math ... -->).
+        // The dictionary is in WP_PLUGIN_HTML_MARKERS.
         $surfaceLower = strtolower($this->stripNoiseForDetection($this->extractPluginSurface($html)));
         $this->matchPluginMarkers($surfaceLower, $slugs);
         foreach ($slugs as $slug => $meta) {
             if (isset($resolvedSlugs[$slug])) {
                 continue;
             }
-            // matchPluginMarkers додав нові slug'и — резолвимо їх як marker
+            // matchPluginMarkers added new slugs — resolve them as marker
             $entry = $this->resolveWpPlugin($slug, $meta['ver']);
             $entry['source'] = 'marker';
             $plugins[] = $entry;
         }
 
-        // Сортуємо за назвою
+        // Sort by name
         usort($plugins, function ($a, $b) {
             return strcasecmp($a['name'], $b['name']);
         });
@@ -3939,7 +3939,7 @@ final class Detector
     }
 
     /**
-     * Збирає slug'и плагінів з asset-URL у HTML (шляхи + ?ver=).
+     * Collect plugin slugs from asset URLs in HTML (paths + ?ver=).
      *
      * @return array<string, array{count: int, ver: ?string}>
      */
@@ -3947,7 +3947,7 @@ final class Detector
     {
         $slugs = [];
 
-        // a) Asset-URL з ?ver= — одразу фіксуємо кандидата на версію.
+        // a) Asset URLs with ?ver= — immediately record a version candidate.
         if (preg_match_all(
             '~/wp-content/plugins/([^/"\'?#\s]+)/[^"\'\s<>]*?[?&]ver=([A-Za-z0-9][A-Za-z0-9._-]*)~i',
             $html,
@@ -3970,7 +3970,7 @@ final class Detector
             }
         }
 
-        // b) Звичайні згадки шляху плагіна (покриває інлайн-JSON, CSS @import тощо).
+        // b) Plain plugin path mentions (cover inline JSON, CSS @import, etc.).
         if (preg_match_all('~/wp-content/plugins/([^/"\'?#\s]+)/~i', $html, $matches)) {
             foreach ($matches[1] as $slug) {
                 $slug = strtolower(trim($slug));
@@ -3984,13 +3984,13 @@ final class Detector
             }
         }
 
-        // Фільтруємо службові/системні шляхи, які не є реальними плагінами.
+        // Filter out service/system paths that are not real plugins.
         foreach (['mu-plugins', 'languages', 'wp-content', 'plugin-dir'] as $bad) {
             unset($slugs[$bad]);
         }
 
-        // c) Власні директорії плагінів у uploads (Popup Maker тримає згенеровані
-        // стилі у /wp-content/uploads/pum/, asset'ів у /plugins/ може не бути).
+        // c) Plugin-owned directories in uploads (Popup Maker keeps generated
+        // styles in /wp-content/uploads/pum/, with no assets under /plugins/).
         foreach (self::WP_PLUGIN_UPLOADS_DIRS as $dir => $mappedSlug) {
             if (preg_match_all(
                 '~/wp-content/uploads/' . preg_quote($dir, '~') . '/[^"\'\s<>]*?[?&]ver=([A-Za-z0-9][A-Za-z0-9._-]*)~i',
@@ -4020,8 +4020,8 @@ final class Detector
     }
 
     /**
-     * Мапа «директорія в uploads → slug плагіна» для плагінів, що генерують
-     * свої файли поза /plugins/ (і тому невидимі для asset-скану).
+     * Map "uploads directory → plugin slug" for plugins that generate
+     * their files outside /plugins/ (and are thus invisible to the asset scan).
      */
     private const WP_PLUGIN_UPLOADS_DIRS = [
         'pum' => 'popup-maker',
@@ -4036,8 +4036,8 @@ final class Detector
     }
 
     /**
-     * Відсікає ?ver=, що однакова у ≥4 плагінів — це версія ядра WP
-     * за замовчуванням (wp_enqueue без $ver підставляє get_bloginfo('version')).
+     * Drop ?ver= values shared by ≥4 plugins — this is the WP core version
+     * by default (wp_enqueue without $ver substitutes get_bloginfo('version')).
      *
      * @param array<string, array{count: int, ver: ?string}> $slugs
      */
@@ -4061,8 +4061,8 @@ final class Detector
     }
 
     /**
-     * Шукає маркери WP_PLUGIN_HTML_MARKERS у підготовленій поверхні
-     * (lowercase, без шуму) і додає знайдені slug'и у $slugs.
+     * Look for WP_PLUGIN_HTML_MARKERS in the prepared surface
+     * (lowercase, noise-free) and add found slugs into $slugs.
      *
      * @param array<string, array{count: int, ver: ?string}> $slugs
      */
@@ -4070,12 +4070,12 @@ final class Detector
     {
         foreach (self::WP_PLUGIN_HTML_MARKERS as $slug => $markers) {
             if (isset($slugs[$slug])) {
-                continue; // уже знайдено за asset-шляхом
+                continue; // already found via asset path
             }
             foreach ($markers as $marker) {
-                // Межі як у Wappalyzer: маркер не має бути частиною довшого
-                // slug'а (напр. клас `tag-wordpress-elementor` від мітки блогу —
-                // це НЕ ознака плагіна Elementor; а `elementor-widget` — ознака).
+                // Boundaries as in Wappalyzer: a marker must not be part of a longer
+                // slug (e.g. class `tag-wordpress-elementor` from a blog tag —
+                // this is NOT a sign of the Elementor plugin; while `elementor-widget` is).
                 $pat = '~(?<![a-z0-9_-])' . preg_quote(strtolower($marker), '~') . '(?![a-z0-9_])~';
                 if (preg_match($pat, $surfaceLower)) {
                     $slugs[$slug] = ['count' => 1, 'ver' => null, 'marker' => true];
@@ -4086,12 +4086,12 @@ final class Detector
     }
 
     /**
-     * Повертає HTML одного сабпейджа (сторінки запису) для збагачення списку
-     * плагінів, або null. Використовує REST для permalink'а свіжого запису.
+     * Return HTML of one subpage (a post page) to enrich the plugin list,
+     * or null. Uses REST for a fresh post permalink.
      */
     private function fetchWordPressSubpageSample(string $html): ?string
     {
-        // Немає сенсу, якщо головна вже має форму коментарів — там усе видно.
+        // No point if the homepage already has a comments form — everything is visible there.
         if (preg_match('~comment-form|id="respond"|class="[^"]*comment-respond~i', $html)) {
             return null;
         }
@@ -4106,8 +4106,8 @@ final class Detector
             }
         }
         if ($postUrl === null) {
-            // Fallback: перше внутрішнє посилання, схоже на запис/сторінку
-            // (не пагінація, не тег/рубрика, не статичний файл).
+            // Fallback: first internal link that looks like a post/page
+            // (not pagination, not a tag/category, not a static file).
             $ownHost = strtolower(parse_url($this->url, PHP_URL_HOST) ?? '');
             if (preg_match_all('~href\s*=\s*["\']([^"\']+)["\']~i', $html, $m)) {
                 foreach ($m[1] as $href) {
@@ -4143,11 +4143,11 @@ final class Detector
     }
 
     /**
-     * Повертає «поверхню» для пошуку маркерів плагінів: HTML-коментарі +
-     * атрибути тегів (src/href/class/id/...), БЕЗ текстового вмісту сторінки
-     * та БЕЗ meta-описів (крім generator — туди пишуть AIOSEO-подібні).
-     * Текст статей/тегів на кшталт «Contact Form 7» чи «Elementor» не має
-     * вважатися ознакою встановленого плагіна.
+     * Return the "surface" for plugin marker search: HTML comments +
+     * tag attributes (src/href/class/id/...), WITHOUT page text content
+     * and WITHOUT meta descriptions (except generator — AIOSEO-like tools write there).
+     * Article/tag text like "Contact Form 7" or "Elementor" must not
+     * count as a sign of an installed plugin.
      */
     private function extractPluginSurface(string $html): string
     {
@@ -4163,9 +4163,9 @@ final class Detector
                     continue;
                 }
                 if ($tname === 'title' || $tname === 'a') {
-                    // <a href="/tag/wordpress-elementor/"> — контентна навігація
-                    // (теги/рубрики), а не слід плагіна. Активи плагінів живуть
-                    // у script/link/img/form/input/div, а не в посиланнях.
+                    // <a href="/tag/wordpress-elementor/"> is content navigation
+                    // (tags/categories), not a plugin trace. Plugin assets live
+                    // in script/link/img/form/input/div, not in links.
                     continue;
                 }
                 $parts[] = $attrs;
@@ -4175,10 +4175,10 @@ final class Detector
     }
 
     /**
-     * Не-asset сліди популярних плагінів: HTML-коментарі, meta-generator,
-     * класи у розмітці. Усі маркери — distinctive рядки, що їх генерує сам плагін
-     * (як у Wappalyzer: dom/html/js-патерни), а не загальні слова.
-     * slug => [маркери]. Усі slug'и мають бути у WP_PLUGIN_NAMES (без HTTP-запитів).
+     * Non-asset traces of popular plugins: HTML comments, meta generator,
+     * classes in markup. All markers are distinctive strings generated by the plugin itself
+     * (as in Wappalyzer: dom/html/js patterns), not generic words.
+     * slug => [markers]. All slugs must be in WP_PLUGIN_NAMES (no HTTP requests).
      */
     private const WP_PLUGIN_HTML_MARKERS = [
         'seo-by-rank-math' => ['rank math', 'rankmath'],
@@ -4210,8 +4210,8 @@ final class Detector
     ];
 
     /**
-     * Чи схоже значення ?ver= на версію плагіна (а не на timestamp/cache-buster).
-     * Відсікає unix-timestamp'и (10+ цифр), md5-хеші та нечислові рядки.
+     * Check whether a ?ver= value looks like a plugin version (not a timestamp/cache-buster).
+     * Filters out unix timestamps (10+ digits), md5 hashes and non-numeric strings.
      */
     private function isPlausibleAssetVersion(string $ver): bool
     {
@@ -4228,8 +4228,8 @@ final class Detector
     }
 
     /**
-     * Читає readme.txt плагіна і повертає Stable tag (встановлену версію),
-     * або null (файл закрито / тега немає / тег не схожий на версію).
+     * Read a plugin's readme.txt and return the Stable tag (installed version),
+     * or null (file closed / no tag / tag does not look like a version).
      */
     private function fetchPluginStableTag(string $slug): ?string
     {
@@ -4258,9 +4258,9 @@ final class Detector
                 $info['version'] = $assetVer;
                 $info['version_source'] = 'asset-ver';
             } else {
-                // Словник знає ім'я, але версії з asset'ів немає (Polylang, Rank Math
-                // тощо часто нічого не підключають). Пробуємо readme.txt: Stable tag
-                // у файлі поставленого плагіна = його встановлена версія.
+                // The dictionary knows the name, but there is no version from assets (Polylang, Rank Math
+                // etc. often attach nothing). Try readme.txt: the Stable tag
+                // in the installed plugin's file is its installed version.
                 $stable = $this->fetchPluginStableTag($slug);
                 if ($stable !== null) {
                     $info['version'] = $stable;
@@ -4270,7 +4270,7 @@ final class Detector
             return $info;
         }
 
-        // Спроба прочитати readme.txt плагіна (Stable tag = версія релізу).
+        // Try reading the plugin readme.txt (Stable tag = release version).
         $readme = $this->httpGet($this->url . '/wp-content/plugins/' . $slug . '/readme.txt', 4);
         if (is_string($readme) && $readme !== '' && stripos($readme, '<html') === false
             && preg_match('~^[ \t*]*Plugin Name:\s*(.+?)\s*$~im', $readme, $m)) {
@@ -4292,8 +4292,8 @@ final class Detector
             return $info;
         }
 
-        // Спроба прочитати заголовок основного PHP-файла плагіна.
-        // index.php свідомо пропущено: у 99% це заглушка "Silence is golden" без заголовка.
+        // Try reading the main PHP file header of the plugin.
+        // index.php is deliberately skipped: in 99% it is a "Silence is golden" stub with no header.
         foreach ([$slug . '.php', 'plugin.php'] as $file) {
             $php = $this->httpGet($this->url . '/wp-content/plugins/' . $slug . '/' . $file, 4);
             if (!is_string($php) || $php === '' || stripos($php, '<html') !== false) {
@@ -4318,7 +4318,7 @@ final class Detector
             }
         }
 
-        // Fallback: гарно форматуємо slug; версію беремо з ?ver= якщо є.
+        // Fallback: prettify the slug; take the version from ?ver= if present.
         $info['name'] = ucwords(str_replace(['-', '_'], ' ', $slug));
         if ($assetVer !== null) {
             $info['version'] = $assetVer;
@@ -4328,8 +4328,8 @@ final class Detector
     }
 
     /**
-     * Деталі Joomla: версія ядра, активний шаблон, сторонні розширення, адмінка.
-     * Зберігається в sections.cms[].joomla, рендериться всередині картки CMS.
+     * Joomla details: core version, active template, third-party extensions, admin panel.
+     * Stored in sections.cms[].joomla, rendered inside the CMS card.
      */
     private function detectJoomlaDetails(string $html, ?string $generator = null): ?array
     {
@@ -4361,10 +4361,10 @@ final class Detector
     }
 
     /**
-     * Версія Joomla за пріоритетом:
-     *  1. meta generator (динамічний, найточніший);
-     *  2. /administrator/manifests/files/joomla.xml <version> (файл ядра);
-     *  3. /language/en-GB/en-GB.xml <version> (версія мовного пакета ядра).
+     * Joomla version by priority:
+     *  1. meta generator (dynamic, most accurate);
+     *  2. /administrator/manifests/files/joomla.xml <version> (core file);
+     *  3. /language/en-GB/en-GB.xml <version> (core language pack version).
      */
     private function detectJoomlaVersion(string $html, ?string $generator = null): array
     {
@@ -4399,8 +4399,8 @@ final class Detector
     }
 
     /**
-     * Активний шаблон Joomla: найчастіший slug у /templates/SLUG/ (+ templateDetails.xml).
-     * Службовий 'system' (сторінки помилок) ігнорується.
+     * Active Joomla template: most frequent slug in /templates/SLUG/ (+ templateDetails.xml).
+     * The service 'system' (error pages) is ignored.
      */
     private function detectJoomlaTemplate(string $html): ?array
     {
@@ -4440,17 +4440,17 @@ final class Detector
     }
 
     /**
-     * Сторонні розширення Joomla за слідами в HTML:
-     * - компоненти: option=com_X / /component/X / /components/com_X (крім ядра);
-     * - модулі: /modules/mod_X, /media/mod_X;
-     * - плагіни: /plugins/GROUP/NAME;
-     * - коментарі: JOOMLA_HTML_MARKERS (Modules Anywhere, Unite Gallery +версія…).
+     * Third-party Joomla extensions from HTML traces:
+     * - components: option=com_X / /component/X / /components/com_X (except core);
+     * - modules: /modules/mod_X, /media/mod_X;
+     * - plugins: /plugins/GROUP/NAME;
+     * - comments: JOOMLA_HTML_MARKERS (Modules Anywhere, Unite Gallery +version…).
      */
     private function detectJoomlaExtensions(string $html): array
     {
         $found = []; // key => ['name'=>..., 'version'=>?string, 'source'=>...]
 
-        // Компоненти з URL/форм
+        // Components from URLs/forms
         $comSlugs = [];
         if (preg_match_all('~option=(com_[a-z0-9_]+)~i', $html, $m)) {
             foreach ($m[1] as $s) {
@@ -4479,7 +4479,7 @@ final class Detector
             ];
         }
 
-        // Модулі з asset-шляхів
+        // Modules from asset paths
         if (preg_match_all('~/(?:modules|media)/(mod_[a-z0-9_]+)/~i', $html, $m)) {
             foreach ($m[1] as $s) {
                 $slug = strtolower($s);
@@ -4491,7 +4491,7 @@ final class Detector
             }
         }
 
-        // Плагіни з asset-шляхів /plugins/GROUP/NAME/
+        // Plugins from /plugins/GROUP/NAME/ asset paths
         if (preg_match_all('~/plugins/([a-z0-9_]+)/([a-z0-9_-]+)/~i', $html, $m, PREG_SET_ORDER)) {
             foreach ($m as $hit) {
                 $key = 'plg:' . strtolower($hit[1]) . '/' . strtolower($hit[2]);
@@ -4507,7 +4507,7 @@ final class Detector
             }
         }
 
-        // Маркери в коментарях/атрибутах (поверхня як у WP-плагінів).
+        // Markers in comments/attributes (surface as in WP plugins).
         $surfaceLower = strtolower($this->stripNoiseForDetection($this->extractPluginSurface($html)));
         foreach (self::JOOMLA_HTML_MARKERS as $key => $cfg) {
             if (isset($found[$key])) {
@@ -4532,9 +4532,9 @@ final class Detector
         }
 
         $extensions = array_values($found);
-        // Дедуплікація за назвою: один і той самий компонент може світитися
-        // і в URL (option=com_x), і в asset-шляху — лишаємо сильніший доказ
-        // (з версією > asset-path > component-url > marker).
+        // Deduplicate by name: the same component may show up
+        // both in a URL (option=com_x) and in an asset path — keep the stronger evidence
+        // (with a version > asset-path > component-url > marker).
         $rank = ['marker' => 0, 'component-url' => 1, 'asset-path' => 2];
         $byName = [];
         foreach ($extensions as $e) {
@@ -4556,7 +4556,7 @@ final class Detector
     }
 
     /**
-     * Маркери Joomla-розширень у коментарях/атрибутах (key має префікс com:/mod:/plg:/ext:).
+     * Joomla extension markers in comments/attributes (key has a com:/mod:/plg:/ext: prefix).
      */
     private const JOOMLA_HTML_MARKERS = [
         'ext:modules-anywhere' => [
@@ -4608,7 +4608,7 @@ final class Detector
     ];
 
     /**
-     * Адмінка Joomla: стандартний /administrator/ з формою входу, або приховано.
+     * Joomla admin panel: standard /administrator/ with a login form, or hidden.
      */
     private function detectJoomlaAdminUrl(): array
     {
@@ -4639,8 +4639,8 @@ final class Detector
     }
 
     /**
-     * Деталі Drupal: версія ядра, активна тема, сторонні модулі, вхід.
-     * Зберігається в sections.cms[].drupal, рендериться всередині картки CMS.
+     * Drupal details: core version, active theme, third-party modules, login.
+     * Stored in sections.cms[].drupal, rendered inside the CMS card.
      */
     private function detectDrupalDetails(string $html, ?string $generator, array $headers): ?array
     {
@@ -4672,9 +4672,9 @@ final class Detector
     }
 
     /**
-     * Версія Drupal за пріоритетом:
-     *  1. /core/CHANGELOG.txt — перший рядок з "Drupal X.Y.Z" (точна, якщо файл відкрито);
-     *  2. meta Generator / X-Generator ("Drupal 10" — лише мажорна гілка).
+     * Drupal version by priority:
+     *  1. /core/CHANGELOG.txt — first line with "Drupal X.Y.Z" (exact, if the file is open);
+     *  2. meta Generator / X-Generator ("Drupal 10" — major branch only).
      */
     private function detectDrupalVersion(string $html, ?string $generator, array $headers): array
     {
@@ -4713,16 +4713,16 @@ final class Detector
     }
 
     /**
-     * Активна тема Drupal: найчастіший slug у /sites/…/themes/SLUG/ та /themes/…/SLUG/.
-     * Пробує прочитати .info.yml за спостереженим базовим шляхом (часто 403 — тоді без деталей).
+     * Active Drupal theme: most frequent slug in /sites/…/themes/SLUG/ and /themes/…/SLUG/.
+     * Tries to read .info.yml at the observed base path (often 403 — then without details).
      *
      * @return array{slug: string, name?: string, version?: string, description?: string, base?: string}|null
      */
     private function detectDrupalTheme(string $html): ?array
     {
         $candidates = []; // slug => ['count'=>int, 'base'=>string]
-        // Лівий контекст ["'(\s= — відсікає RDF-неймспейси на кшталт
-        // purl.org/rss/1.0/modules/content/ у <html prefix="...">.
+        // Left context ["'(\s= — filters out RDF namespaces like
+        // purl.org/rss/1.0/modules/content/ in <html prefix="...">.
         if (preg_match_all('~(?<=["\'\(\\s=])(/sites/(?:default|all)/themes/|/themes/(?:custom/|contrib/)?|/core/themes/)([a-z0-9_-]+)/~i', $html, $m, PREG_SET_ORDER)) {
             foreach ($m as $hit) {
                 $slug = strtolower($hit[2]);
@@ -4761,9 +4761,9 @@ final class Detector
     }
 
     /**
-     * Сторонні модулі Drupal за asset-шляхами:
+     * Third-party Drupal modules by asset paths:
      * /sites/…/modules[/contrib]/SLUG/, /modules[/contrib]/SLUG/.
-     * Ядро (/core/modules/…) пропускається — це не «виявлення», а шум.
+     * Core (/core/modules/…) is skipped — it is not a "detection", just noise.
      */
     private function detectDrupalModules(string $html): array
     {
@@ -4785,7 +4785,7 @@ final class Detector
         return $modules;
     }
 
-    /** Машинні імена модулів ядра Drupal — не показуємо як «виявлені». */
+    /** Machine names of Drupal core modules — do not show as "detected". */
     private const DRUPAL_CORE_MODULES = [
         'views', 'views_ui', 'block', 'block_content', 'node', 'user', 'system',
         'field', 'field_ui', 'filter', 'text', 'options', 'taxonomy', 'image',
@@ -4799,7 +4799,7 @@ final class Detector
     ];
 
     /**
-     * Вхід Drupal: стандартний /user/login з формою, або приховано.
+     * Drupal login: standard /user/login with a form, or hidden.
      */
     private function detectDrupalLoginUrl(): array
     {
@@ -4848,8 +4848,8 @@ final class Detector
             'Requires at least' => 'requiresAtLeast',
         ];
         foreach ($fields as $field => $key) {
-            // Дозволяємо як звичайний формат ("Theme Name: ..."),
-            // так і формат WP-коментаря (" * Theme Name: ...")
+            // Allow both the plain format ("Theme Name: ..."),
+            // and the WP-comment format (" * Theme Name: ...")
             if (preg_match('~^\s*\*?\s*' . preg_quote($field, '~') . '\s*:\s*(.+?)\s*(?:\*/)?$~im', $css, $m)) {
                 $info[$key] = trim($m[1]);
             }
@@ -4866,7 +4866,7 @@ final class Detector
     }
 
     /**
-     * Словник відомих плагінів WordPress: slug => [name, site].
+     * Known WordPress plugin dictionary: slug => [name, site].
      */
     private const WP_PLUGIN_NAMES = [
         'akismet' => ['name' => 'Akismet Anti-Spam', 'site' => 'https://akismet.com'],
@@ -5029,7 +5029,7 @@ final class Detector
     ];
 
     /**
-     * Сигнатури CMS, фреймворків і технологій.
+     * CMS, framework and technology signatures.
      */
     private function loadSignatures(): array
     {

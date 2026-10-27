@@ -1,9 +1,9 @@
-# Виключаємо вміст папки cache (згенеровані результати та службові дані)
+# Exclude cache dir contents (generated results and service data)
 cache/*
 !cache/.htaccess
 !cache/index.php
 !cache/security/
 cache/security/*
 !cache/security/.htaccess
-# Локальні налаштування з секретами (API-ключі) — ніколи не комітити
+# Local settings with secrets (API keys) — never commit
 config.php

@@ -153,7 +153,7 @@ $csrfToken = $spamProtection->generateToken();
                     </section>
 
                     <div class="results__content" id="results-content">
-                        <!-- Картки результатів рендеряться JS у міру надходження даних -->
+                        <!-- Result cards are rendered by JS as data arrives -->
                     </div>
                 </article>
             </div>
